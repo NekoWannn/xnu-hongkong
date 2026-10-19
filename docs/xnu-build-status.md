@@ -148,3 +148,46 @@ Verified header: `MH_MAGIC_64`, `CPU_TYPE_ARM64`, `MH_EXECUTE`, 19 segments,
   enter at `__start`
 - storage (UFS 4.0) and display drivers
 - the phone currently only ever runs `fastboot boot` images; nothing is flashed
+## MILESTONE: control transfers into XNU on hardware
+
+Load chain, verified on the phone tonight:
+
+```
+[screen] green  = shim running
+         cyan   = all 11 Mach-O segments relocated to 0xa8000000
+         white  = one block per segment
+         magenta= boot_args + device tree in place, about to jump
+         -> device resets: XNU __start executed and faulted
+```
+
+### Loader facts
+
+- Boot image = shim padded to 0x10000, then payload
+  (header 24 bytes: magic "XNUF", nsegs, entry_vm, link_base;
+   then nsegs x {vmaddr, vmsize, fileoff, filesize}; raw segment bytes;
+   then u32 dtb_len + dtb).
+- Kernel loads at PHYS_BASE 0xa8000000, entry at +0x466488 (`__start`).
+- `boot_args` and the DTB are placed after the kernel image, not at fixed
+  offsets (a fixed 0xE00000 offset silently overlapped the kernel).
+- Two pitfalls that cost cycles:
+  * the payload header is 24 bytes, not 16 - a wrong offset reads garbage
+    `filesize` and the copy loop never terminates;
+  * with the MMU off all memory is Device type, where **unaligned 64-bit
+    accesses fault** - the DTB sits behind a u32 length prefix, so it must be
+    copied byte-wise.
+- `fastboot boot` of a 16 MB image works fine.
+
+### Kernel side
+
+- `kernel.development.pebble` now contains a framebuffer console
+  (`pe_serial.c`: `pebble_fbcon_serial_functions`, drawn at 0xf8c60000,
+  1120x2436, stride 4480) registered from `serial_init()`.
+- No text appears yet: XNU faults before `serial_init()`, i.e. in
+  `arm_init` / platform bring-up, which still expects Apple's AIC and
+  platform nodes this SoC does not have.
+
+### Next
+
+GICv3 + virtual timer (PPI 27) + a device-tree platform expert inside XNU,
+so that `arm_init` can finish and `serial_init()` registers the framebuffer
+console - at which point every later fault becomes readable on the panel.
