@@ -372,10 +372,10 @@ def main():
 
 
     # 15. PPL/IOMMU helpers that live only in Apple's closed sources
-    src = read("osfmk/arm/pmap/pmap.h")
+    src = read("osfmk/arm/pmap/pmap_internal.h")
     if src is not None and "PEBBLE_PPL_STUBS" not in src:
-        write("osfmk/arm/pmap/pmap.h", src + PPL_STUBS)
-        report.append("PATCHED  osfmk/arm/pmap/pmap.h (ppl stubs)")
+        write("osfmk/arm/pmap/pmap_internal.h", src + PPL_STUBS)
+        report.append("PATCHED  osfmk/arm/pmap/pmap_internal.h (ppl stubs)")
 
     print("\n".join(report))
     bad = [r for r in report if r.startswith(("NOANCHOR", "MISSING"))]
