@@ -355,7 +355,7 @@ def main():
                 src_path = ln.split()[0]
                 # only un-gate files that actually ship in the open drop:
                 # several of these (amcc_rorgn_*.c, ...) are Apple-internal
-                if ("kpc.c" in ln or
+                if ("kpc" in ln or
                         not os.path.exists(os.path.join(XNU, src_path))):
                     out.append(ln)
                     continue
