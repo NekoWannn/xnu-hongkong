@@ -191,3 +191,46 @@ Load chain, verified on the phone tonight:
 GICv3 + virtual timer (PPI 27) + a device-tree platform expert inside XNU,
 so that `arm_init` can finish and `serial_init()` registers the framebuffer
 console - at which point every later fault becomes readable on the panel.
+## Why there is no output before kernel startup
+
+`pexpert/arm/pe_kprintf.c` registers the console through the STARTUP mechanism:
+
+```c
+STARTUP(KPRINTF, STARTUP_RANK_FIRST, PE_init_kprintf);
+```
+
+so `serial_init()` and therefore the framebuffer console only become live late
+in boot. Any `panic()` inside `arm_init()` - including inside
+`PE_init_platform()` -> `SecureDTInit()` / `pe_identify_machine()` - produces
+**no output at all**, just a silent reboot. That is exactly what the phone
+does.
+
+`PE_init_platform(FALSE, args)` order: copy boot args, `SecureDTInit(...)`,
+`pe_identify_machine(...)`. Nothing there prints.
+
+## Plan: an early framebuffer mapping in start.s (approved direction)
+
+`start.s` builds bootstrap tables with 2 MB L2 block entries
+(`create_l2_block_entries`, `ARM_TTE_BLOCK_L2_SHIFT`), covering only the
+kernel image, so the framebuffer at `0xf8c60000` is unmapped while
+`arm_init()` runs.
+
+Make it reachable without touching the pmap:
+
+1. grow `bootstrap_pagetables` from 4 pages to 5 (one extra L2 table);
+2. point L1 entry 3 (the 1 GB region containing `0xf8c00000`) at that table;
+3. add one 2 MB block entry `VA 0xf8c00000 -> PA 0xf8c00000`, device memory;
+4. add `pebble_early_putc()` to the kernel, writing straight to `0xf8c60000`
+   with stride 4480;
+5. sprinkle `pebble_early_putc()` calls through `arm_init()` to bisect at
+   statement granularity.
+
+That turns the panel into a real early console, which is what blocks all
+further progress: right now the only signal is "stopped vs rebooted".
+
+## Bisect hook already in place
+
+The applier understands `PEBBLE_STALL=<site>` and can insert a `wfe` loop at a
+given site (currently `arm_init`). The workflow passes it through, so a single
+dispatch answers "did XNU reach this point?" by whether the phone hangs or
+reboots.
