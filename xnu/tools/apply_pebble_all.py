@@ -403,7 +403,8 @@ def main():
     # 18. framebuffer console: kprintf goes to the panel instead of a UART
     src = read("pexpert/arm/pe_serial.c")
     if src is not None and "pebble_fbcon_serial_functions" not in src:
-        src = src.replace("#if HIBERNATION", FBCON_C + "\n#if HIBERNATION", 1)
+        src = src.replace("\tgPESF = fns;\n}",
+                          "\tgPESF = fns;\n}\n" + FBCON_C, 1)
         src = src.replace(
             'PE_parse_boot_argn("disable-uart-irq", &disable_uart_irq, sizeof(disable_uart_irq));',
             'PE_parse_boot_argn("disable-uart-irq", &disable_uart_irq, sizeof(disable_uart_irq));\n\n\tfbcon_probe();',
