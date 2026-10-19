@@ -417,6 +417,16 @@ def main():
         "SERIAL_DCC_UART=0x10,\n\tSERIAL_PEBBLE_FBCON=0x20",
         "fbcon serial device id")
 
+
+    # 19. bisect aid: hang inside arm_init so "stopped" vs "rebooted" tells us
+    #     whether XNU reached this point (kprintf is not live this early).
+    if os.environ.get("PEBBLE_STALL") == "arm_init":
+        sub("osfmk/arm/arm_init.c",
+            "\tarm_setup_pre_sign();",
+            "\tfor (;;) { __asm__ volatile(\"wfe\"); }\n"
+            "\tarm_setup_pre_sign();",
+            "stall at arm_init")
+
     print("\n".join(report))
     bad = [r for r in report if r.startswith(("NOANCHOR", "MISSING"))]
     print("\n%d edits, %d problems" % (len(report), len(bad)))
