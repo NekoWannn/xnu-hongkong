@@ -1,57 +1,58 @@
-# XNU build status: why the link fails
+# XNU build: current failure point (run 39305684645)
 
-## Symptom
+## What the earlier fix changed
 
-`kernel.development.pebble.unstripped` fails to link with 261 undefined
-symbols, led by `__start` and `_call_continuation`.
+`osfmk/conf/files.arm64` gates the open-source assembly and pmap on the
+`nos_arm_asm` / `nos_arm_pmap` options, which this board never defines, so
+`start.s`, `cswitch.s`, `locore.s` and the pmap were silently dropped. The
+applier now rewrites those lines to `standard`, which is what finally made the
+kernel try to build them.
 
-## Measurements (GitHub Actions run 39288969157, job 118184297105)
+That immediately exposed three missing pieces, now handled:
+
+| Problem | Fix |
+| --- | --- |
+| `arm64/ppl/sart.h`, `arm64/ppl/uat.h` not in the open drop | stubs written by the applier |
+| `arm64/tunables/tunables.s` not in the open drop | empty stub written by the applier |
+| `pmap.c:119: Unknown __ARM_VMSA__` | `-D__ARM_VMSA__=8` in `MACHINE_FLAGS_ARM64_PEBBLE` |
+
+Also fixed in the applier: `write()` now creates parent directories, and the
+`config/MASTER.arm64.pebble` hunk was dropped from the stub patch because our
+copy already differs (the patch failed atomically and did nothing).
+
+## Remaining blocker
+
+`osfmk/arm/pmap/pmap.c` now compiles far enough to hit Apple's closed PPL
+(Page Protection Layer) and IOMMU helpers:
 
 ```
-object count                     873
-link.filelist                    988 entries
-osfmk.filelist                   304 entries
-bsd.filelist                     480, iokit 94, libkern 75
-pexpert 11, security 23, libsa 1, san 0
+pmap.c:4680   call to undeclared function 'ptep_get_iommu'
+pmap.c:6315   call to undeclared function 'pmap_phys_write_disable'
+pmap.c:10984  static assertion failed (KERNEL_BASE 0x68719460352 outside the
+              expected range)
+pmap.c:11626  call to undeclared function 'pmap_ppl_lockdown_pages'
+pmap.c:11636  call to undeclared function 'pmap_ppl_unlockdown_pages'
+pmap.c:11938  static declaration of 'pmap_phys_write_disable' follows
+              non-static declaration
 ```
 
-`grep -E 'start\.o|cswitch\.o' link.filelist` returns **nothing**, while
-`machine_routines.o`, `copyio.o` and `bsd/copyio_tests.o` **are** present.
+These are only referenced when the PPL path is compiled in, and the static
+assertion encodes an Apple address-space assumption, so the next job is to
+decide which side to align:
 
-## Conclusion
+- **A**: make PEBBLE build without PPL (`config_pmap_ppl` off and no PPL
+  references), which is what a hypervisor guest without Apple's PPL should do;
+- **B**: bring in the remaining ios-sweet patches that stub out PPL, and
+  correct `KERNEL_BASE` so the assertion passes.
 
-C sources make it into the per-component object lists; **assembly sources
-(`start.s`, `cswitch.s`, `locore.s`, ...) do not**. `__start` lives in
-`start.s` and `_call_continuation` in `cswitch.s`, which is exactly the pair
-the linker reports first; the remaining undefined symbols are the ones that
-only those objects (and their initialisers) provide.
+A is closer to how a non-Apple SoC actually works; B is what ios-sweet ended
+up doing and is known to compile.
 
-So the problem is not the machine-config registration, not `MASTER.*`, and
-not the patch set: it is that the `.s` files never reach `$(OBJS)`.
+## Pipeline notes
 
-## Next step
-
-Find where assembly sources are added to a component's object list — not in
-`osfmk/conf/files` (no `.s` entries) and not in `osfmk/arm64/Makefile` (which
-only exports headers). Candidates to inspect in a fresh session:
-
-- `makedefs/MakeInc.cmd` (ASM handling, `BUILD_ASM`, per-directory rules)
-- `makedefs/MakeInc.rule` (the `%.o: %.s` pattern rule)
-- whether a whitelist keyed on `MACHINE_CONFIG` gates which `.s` files build
-
-A quick fix once located: append the needed objects explicitly, e.g. in
-`osfmk/arm64/Makefile`
-
-```make
-OBJS += start.o cswitch.o locore.o ...
-```
-
-but prefer fixing the gate so the list stays correct.
-
-## Notes
-
-- `pe_fiq.c` redistributor matching was relaxed (exact affinity, then Aff0,
-  then first frame) after measuring `GICR_TYPER` affinity = 0 with
-  `MPIDR = 0x80000300`; see `docs/m0-registers.md`.
-- Diagnostics in the workflow must not use backticks around `$O`; the YAML is
-  copied verbatim into bash.
+- Repository writes and CI queries are done from the PC with `node` +
+  `port/gh.token` (`gh_put.js`), because the phone's HTTPS to api.github.com
+  intermittently returns an empty reply.
+- The workflow only auto-triggers on `xnu/tools/**` and the workflow file;
+  patch uploads need an explicit dispatch.
+- Never put backticks around `$O` in the workflow's shell blocks.
