@@ -443,8 +443,7 @@ def main():
     # 21. early console: draw from arm_init, before kprintf exists
     src = read("osfmk/arm/arm_init.c")
     if src is not None and "pebble_early_puts" not in src:
-        src = src.replace("#include <pexpert/pexpert/arm64/boot.h>",
-                          "#include <pexpert/pexpert/arm64/boot.h>\n" + PEBBLE_EARLY_C, 1)
+        src = PEBBLE_EARLY_C + src
         src = src.replace("\tarm_setup_pre_sign();",
                           '\tpebble_early_puts("PEBBLE arm_init\\n");\n\tarm_setup_pre_sign();', 1)
         write("osfmk/arm/arm_init.c", src)
