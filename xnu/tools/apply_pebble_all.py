@@ -374,10 +374,10 @@ def main():
     # 15. PPL/IOMMU helpers that live only in Apple's closed sources.
     #     pmap.c is the only file that calls them, and it has pte_t in scope
     #     by this point in its include list.
-    sub("osfmk/arm/pmap/pmap.c",
-        "#include <arm/caches_internal.h>",
-        PPL_STUBS + "\n#include <arm/caches_internal.h>",
-        "ppl stubs")
+    anchor = ("#if __ARM_VMSA__ != 8\n"
+              "#error Unknown __ARM_VMSA__\n"
+              "#endif\n")
+    sub("osfmk/arm/pmap/pmap.c", anchor, anchor + "\n" + PPL_STUBS, "ppl stubs")
 
     print("\n".join(report))
     bad = [r for r in report if r.startswith(("NOANCHOR", "MISSING"))]
