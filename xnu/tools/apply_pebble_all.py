@@ -239,6 +239,8 @@ PEBBLE_STAGE0 = '\n#if defined(PEBBLE)\n\t/* Stage 0: white band written straigh
 
 PEBBLE_FB_BLOCK = '\n#if defined(PEBBLE)\n\t/*\n\t * Map the splash framebuffer with one 32 MB Normal-NC block inside the\n\t * EXISTING V=P L2 table. Framebuffer and RAM share L1 index 0, so a\n\t * second create_bootstrap_mapping would replace the RAM L2 table.\n\t * 16K granule: the first V=P L2 page is bootstrap_pagetables + 2 pages.\n\t */\n\tMOV64\tx10, 0xf8000000\n\tMOV64\tx11, (ARM_TTE_TYPE_BLOCK | ARM_TTE_VALID | ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) | ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_WRITECOMB) | ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX)\n\torr\tx11, x11, x10\n\tand\tx12, x10, #(ARM_TT_L2_INDEX_MASK)\n\tlsr\tx12, x12, #(ARM_TT_L2_SHIFT)\n\tadd\tx13, x25, #(2 * PGBYTES)\n\tstr\tx11, [x13, x12, lsl #TTE_SHIFT]\n#endif\n'
 
+PEBBLE_STAGE1 = '\n#if defined(PEBBLE)\n\t/* Stage 1: the MMU is on now; a red band proves the V=P framebuffer\n\t * block inserted earlier is live. */\n\tMOV64\tx0, 0xf8e15600\n\tMOV64\tx4, 4480\n\tmov\tx2, #8\nLpebble_mmu_row:\n\tmov\tx3, #96\n\tmov\tx5, x0\n\tmov\tw1, #0x00ff0000\nLpebble_mmu_pixel:\n\tstr\tw1, [x5], #4\n\tsubs\tx3, x3, #1\n\tb.ne\tLpebble_mmu_pixel\n\tadd\tx0, x0, x4\n\tsubs\tx2, x2, #1\n\tb.ne\tLpebble_mmu_row\n\tdsb\tsy\n#endif\n'
+
 PPL_STUBS = "\n/* ---- PEBBLE_PPL_STUBS ----------------------------------------------------\n * Apple's closed Page Protection Layer supplies these helpers and their\n * declarations.  A Gunyah guest has no PPL, and the open drop never declares\n * them, but pmap.c calls several of them unconditionally.\n */\n#ifndef PEBBLE_PPL_STUBS\n#define PEBBLE_PPL_STUBS\n\n/* The closed uat.h normally supplies pte_t. */\n#ifndef PEBBLE_PTE_T_DEFINED\n#define PEBBLE_PTE_T_DEFINED\ntypedef uint64_t pte_t;\n#endif\n\nstatic inline void *\nptep_get_iommu(pte_t pte)\n{\n\t(void)pte;\n\treturn NULL;\n}\n\nstatic inline void\npmap_ppl_lockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_unlockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_lockdown_page(vm_address_t va, int flags, bool ppl_writable)\n{\n\t(void)va;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic void pmap_phys_write_disable(vm_address_t va);\n\n#endif /* PEBBLE_PPL_STUBS */\n"
 
 
@@ -445,9 +447,9 @@ def main():
         src = src.replace("void arm_init(boot_args * args);",
                           PEBBLE_EARLY_C + "void arm_init(boot_args * args);", 1)
         src = src.replace("\tarm_vm_init(xmaxmem, args);",
-                          '\tarm_vm_init(xmaxmem, args);\n\tpebble_early_puts("PEBBLE pmap ok\\n");', 1)
-        src = src.replace("\tPE_init_platform(TRUE, &BootCpuData);",
-                          '\tPE_init_platform(TRUE, &BootCpuData);\n\tpebble_early_puts("PEBBLE irq ok\\n");', 1)
+                          '\tpebble_early_puts("PEBBLE dt ok\\n");\n\tarm_vm_init(xmaxmem, args);', 1)
+        src = src.replace("\tPE_init_platform(FALSE, args);",
+                          '\tpebble_early_puts("PEBBLE platform ok\\n");\n\tPE_init_platform(FALSE, args);', 1)
         write("osfmk/arm/arm_init.c", src)
         report.append("PATCHED  osfmk/arm/arm_init.c (early console)")
 
@@ -462,6 +464,14 @@ def main():
                           PEBBLE_FB_BLOCK + "\t/* Ensure TTEs are visible */", 1)
         write("osfmk/arm64/start.s", src)
         report.append("PATCHED  osfmk/arm64/start.s (early framebuffer)")
+
+
+    src = read("osfmk/arm64/start.s")
+    if src is not None and "Lpebble_mmu_row" not in src:
+        src = src.replace("\tbl\t\tEXT(set_mmu_ttb)\n\tmov\t\tlr, x19\n",
+                          "\tbl\t\tEXT(set_mmu_ttb)\n\tmov\t\tlr, x19\n" + PEBBLE_STAGE1, 1)
+        write("osfmk/arm64/start.s", src)
+        report.append("PATCHED  osfmk/arm64/start.s (stage 1 marker)")
 
     print("\n".join(report))
     bad = [r for r in report if r.startswith(("NOANCHOR", "MISSING"))]
