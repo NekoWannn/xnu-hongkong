@@ -80,6 +80,18 @@ jobs:
           MAKEFLAGS: ${{ inputs.keep_going == 'false' && '' || '-k' }}
         run: bash build.sh
 
+      - name: Diagnose build tree
+        if: always()
+        run: |
+          O=dxb/build/xnu.obj/DEVELOPMENT_ARM64_PEBBLE
+          echo "== filelists =="
+          find "$O" -name '*.filelist' -exec wc -l {} + 2>/dev/null | tail -25 || true
+          echo "== object count =="
+          find "$O" -name '*.o' 2>/dev/null | wc -l || true
+          echo "== component dirs =="
+          ls "$O" 2>/dev/null | head -20 || true
+          echo "== osfmk/DEVELOPMENT =="
+          ls "$O/osfmk/DEVELOPMENT" 2>/dev/null | head -10 || true
       - name: Collect
         if: always()
         run: |
