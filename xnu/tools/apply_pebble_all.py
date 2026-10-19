@@ -214,6 +214,13 @@ def write(rel, text):
     open(p, "w", encoding="utf-8", errors="surrogateescape").write(text)
 
 
+STUBS = {
+    'osfmk/arm64/ppl/sart.h': "/*\n * pebble: Apple's SART (IOMMU for NVMe/ANS) header is not in the open\n * source drop. There is no SART on Qualcomm hardware; bootstrap is a no-op.\n */\n#ifndef _ARM64_PPL_SART_H_\n#define _ARM64_PPL_SART_H_\n\nstatic inline void\nsart_bootstrap(void)\n{\n}\n\n#endif /* _ARM64_PPL_SART_H_ */\n",
+    'osfmk/arm64/ppl/uat.h': "/*\n * pebble: Apple's UAT (GPU unified address translator) header is not in the\n * open source drop. No UAT on Qualcomm hardware; bootstrap is a no-op.\n */\n#ifndef _ARM64_PPL_UAT_H_\n#define _ARM64_PPL_UAT_H_\n\nstatic inline void\nuat_bootstrap(void)\n{\n}\n\n#endif /* _ARM64_PPL_UAT_H_ */\n",
+    'osfmk/arm64/tunables/tunables.s': "/*\n * pebble: Apple's per-SoC CPU tunables (implementation-defined HID/ACC\n * register settings applied in start.s) are not in the open source drop,\n * and none of them exist on Cortex-A76/A55. APPLY_TUNABLES does nothing.\n */\n.macro APPLY_TUNABLES midr, tmp1, tmp2\n.endmacro\n",
+}
+
+
 def sub(rel, old, new, note):
     src = read(rel)
     if src is None:
@@ -348,6 +355,14 @@ def main():
                 out.append(ln)
         write("osfmk/conf/files.arm64", "".join(out))
         report.append("PATCHED  osfmk/conf/files.arm64 (%d gates removed)" % n)
+
+
+    # 14. Apple-internal headers/asm that the open-source pmap and start.s
+    #     include; the tree does not ship them.
+    for path, body in STUBS.items():
+        if read(path) is None:
+            write(path, body)
+            report.append("CREATED  %s (stub)" % path)
 
     print("\n".join(report))
     bad = [r for r in report if r.startswith(("NOANCHOR", "MISSING"))]
