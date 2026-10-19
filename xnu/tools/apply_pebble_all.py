@@ -8,6 +8,9 @@ for its marker first.
 Usage: apply_pebble_all.py /path/to/xnu
 """
 import os
+
+# set to "arm_init" to hang there and test reachability
+STALL_SITE = ""
 import re
 import sys
 
@@ -428,7 +431,7 @@ def main():
 
     # 19. bisect aid: hang inside arm_init so "stopped" vs "rebooted" tells us
     #     whether XNU reached this point (kprintf is not live this early).
-    if os.environ.get("PEBBLE_STALL") == "arm_init":
+    if STALL_SITE == "arm_init":
         sub("osfmk/arm/arm_init.c",
             "\tarm_setup_pre_sign();",
             "\tfor (;;) { __asm__ volatile(\"wfe\"); }\n"
