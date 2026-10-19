@@ -352,7 +352,11 @@ def main():
         n = 0
         for ln in src.splitlines(True):
             if ("nos_arm_asm" in ln or "nos_arm_pmap" in ln) and "optional" in ln:
-                if "kpc.c" in ln:
+                src_path = ln.split()[0]
+                # only un-gate files that actually ship in the open drop:
+                # several of these (amcc_rorgn_*.c, ...) are Apple-internal
+                if ("kpc.c" in ln or
+                        not os.path.exists(os.path.join(XNU, src_path))):
                     out.append(ln)
                     continue
                 out.append(ln.split("optional")[0] + "standard\n")
