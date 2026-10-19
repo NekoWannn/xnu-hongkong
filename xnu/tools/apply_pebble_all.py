@@ -328,6 +328,27 @@ def main():
         FIQ_PEBBLE + "#else\nvoid\npe_init_fiq()\n{\n}\n#endif",
         "pebble gic init")
 
+    # 13. make the open-source arm64 assembly and pmap visible to the file
+    #     list generator.  files.arm64 gates start.s, cswitch.s, locore.s and
+    #     the pmap on "nos_arm_asm" / "nos_arm_pmap", options this board never
+    #     defines, so those objects were silently dropped and the kernel
+    #     linked with __start and _call_continuation undefined.
+    src = read("osfmk/conf/files.arm64")
+    if src is not None:
+        out = []
+        n = 0
+        for ln in src.splitlines(True):
+            if ("nos_arm_asm" in ln or "nos_arm_pmap" in ln) and "optional" in ln:
+                if "kpc.c" in ln:
+                    out.append(ln)
+                    continue
+                out.append(ln.split("optional")[0] + "standard\n")
+                n += 1
+            else:
+                out.append(ln)
+        write("osfmk/conf/files.arm64", "".join(out))
+        report.append("PATCHED  osfmk/conf/files.arm64 (%d gates removed)" % n)
+
     print("\n".join(report))
     bad = [r for r in report if r.startswith(("NOANCHOR", "MISSING"))]
     print("\n%d edits, %d problems" % (len(report), len(bad)))
