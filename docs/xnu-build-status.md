@@ -105,3 +105,46 @@ Zero compile errors. Undefined symbols dropped **261 -> 32**, in three groups:
 
 All three are "Apple-only, should not exist without PPL", so option A is
 converging rather than changing direction.
+## SUCCESS: kernel builds (run 39319201778)
+
+```
+LD kernel.development.pebble.unstripped
+built kernel at dxb/build/xnu.obj/DEVELOPMENT_ARM64_PEBBLE/kernel.development.pebble
+STRIP / CTFCONVERT / CTFMERGE   (11922 functions, 4672 data objects, 27768 types)
+```
+
+Artifact `xnu-kernel` (66 MB) contains:
+
+| File | Size |
+| --- | --- |
+| `kernel.development.pebble` | 16,371,136 |
+| `kernel.development.pebble.unstripped` | 21,181,912 |
+| `kernel.development.pebble.ctf` | 66,063,604 |
+| `kernel.development.pebble.dSYM` | dir |
+
+Verified header: `MH_MAGIC_64`, `CPU_TYPE_ARM64`, `MH_EXECUTE`, 19 segments,
+`__TEXT` at `0xfffffe0007004000` (matches `VM_KERNEL_LINK_ADDRESS`).
+
+### What actually fixed it
+
+1. `osfmk/conf/files.arm64` gates asm/pmap on `nos_arm_asm` / `nos_arm_pmap`;
+   the applier rewrites those lines to `standard`, but **only for files that
+   exist** — `amcc_rorgn_*.c` and friends are Apple-internal and must stay out
+   or make fails with "no rule to make target".
+2. `-D__ARM_VMSA__=8` and `-D__ARM_16K_PG__` in `MACHINE_FLAGS_ARM64_PEBBLE`
+   (the latter selects `ARM_PGSHIFT 14` in `osfmk/arm64/proc_reg.h:1157`).
+3. Stub headers `arm64/ppl/{sart.h,uat.h}` and `arm64/tunables/tunables.s`,
+   plus a `pte_t` typedef, all written by the applier.
+4. PPL/IOMMU declarations injected into `pmap.c` after its include list
+   (`pte_t` is only visible there).
+5. `osfmk/arm64/pebble_stubs.s`: assembly stubs for 20 Apple-only functions
+   (kpc, `ml_enable_monitor`, cache helper) and 8 data symbols.
+6. Artifact collection had to copy from
+   `dxb/build/xnu.obj/DEVELOPMENT_ARM64_PEBBLE/`, not `fakeroot/...`.
+
+### Still missing before it can boot
+
+- boot shim: load this Mach-O, synthesise the Apple device tree and boot args,
+  enter at `__start`
+- storage (UFS 4.0) and display drivers
+- the phone currently only ever runs `fastboot boot` images; nothing is flashed
