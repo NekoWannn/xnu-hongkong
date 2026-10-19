@@ -224,6 +224,8 @@ STUBS = {
 }
 
 
+STUBS_ASM = "/* PEBBLE: stubs for Apple-only symbols that have no open implementation.\n * kpc programs Apple's PMU; the cache helper and monitor hook are not\n * used on this platform.  Assembly is used so no prototypes are needed.\n */\n\t.text\n\t.p2align 2\n\n\t.globl _kpc_arch_init\n_kpc_arch_init:\n\tret\n\n\t.globl _kpc_get_all_cpus_counters\n_kpc_get_all_cpus_counters:\n\tret\n\n\t.globl _kpc_get_classes\n_kpc_get_classes:\n\tret\n\n\t.globl _kpc_get_configurable_config\n_kpc_get_configurable_config:\n\tret\n\n\t.globl _kpc_get_configurable_counters\n_kpc_get_configurable_counters:\n\tret\n\n\t.globl _kpc_get_fixed_config\n_kpc_get_fixed_config:\n\tret\n\n\t.globl _kpc_get_fixed_counters\n_kpc_get_fixed_counters:\n\tret\n\n\t.globl _kpc_get_pmu_version\n_kpc_get_pmu_version:\n\tret\n\n\t.globl _kpc_get_rawpmu_config\n_kpc_get_rawpmu_config:\n\tret\n\n\t.globl _kpc_idle\n_kpc_idle:\n\tret\n\n\t.globl _kpc_idle_exit\n_kpc_idle_exit:\n\tret\n\n\t.globl _kpc_is_running_configurable\n_kpc_is_running_configurable:\n\tret\n\n\t.globl _kpc_is_running_fixed\n_kpc_is_running_fixed:\n\tret\n\n\t.globl _kpc_pc_capture\n_kpc_pc_capture:\n\tret\n\n\t.globl _kpc_set_config_arch\n_kpc_set_config_arch:\n\tret\n\n\t.globl _kpc_set_period_arch\n_kpc_set_period_arch:\n\tret\n\n\t.globl _kpc_set_running_arch\n_kpc_set_running_arch:\n\tret\n\n\t.globl _kpc_set_sw_inc\n_kpc_set_sw_inc:\n\tret\n\n\t.globl _ml_enable_monitor\n_ml_enable_monitor:\n\tret\n\n\t.globl _CleanPoC_DcacheRegion_Force_nopreempt_nohid\n_CleanPoC_DcacheRegion_Force_nopreempt_nohid:\n\tret\n\n\t.data\n\t.p2align 2\n\n\t.globl _kpc_configurable_config_count\n_kpc_configurable_config_count:\n\t.long 0\n\n\t.globl _kpc_configurable_count\n_kpc_configurable_count:\n\t.long 0\n\n\t.globl _kpc_configurable_max\n_kpc_configurable_max:\n\t.long 0\n\n\t.globl _kpc_fixed_config_count\n_kpc_fixed_config_count:\n\t.long 0\n\n\t.globl _kpc_fixed_count\n_kpc_fixed_count:\n\t.long 0\n\n\t.globl _kpc_fixed_max\n_kpc_fixed_max:\n\t.long 0\n\n\t.globl _kpc_rawpmu_config_count\n_kpc_rawpmu_config_count:\n\t.long 0\n\n\t.globl _pmap_pending_preemption\n_pmap_pending_preemption:\n\t.long 0\n\n"
+
 PPL_STUBS = "\n/* ---- PEBBLE_PPL_STUBS ----------------------------------------------------\n * Apple's closed Page Protection Layer supplies these helpers and their\n * declarations.  A Gunyah guest has no PPL, and the open drop never declares\n * them, but pmap.c calls several of them unconditionally.\n */\n#ifndef PEBBLE_PPL_STUBS\n#define PEBBLE_PPL_STUBS\n\n/* The closed uat.h normally supplies pte_t. */\n#ifndef PEBBLE_PTE_T_DEFINED\n#define PEBBLE_PTE_T_DEFINED\ntypedef uint64_t pte_t;\n#endif\n\nstatic inline void *\nptep_get_iommu(pte_t pte)\n{\n\t(void)pte;\n\treturn NULL;\n}\n\nstatic inline void\npmap_ppl_lockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_unlockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_lockdown_page(vm_address_t va, int flags, bool ppl_writable)\n{\n\t(void)va;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic void pmap_phys_write_disable(vm_address_t va);\n\n#endif /* PEBBLE_PPL_STUBS */\n"
 
 
@@ -382,6 +384,18 @@ def main():
               "#error Unknown __ARM_VMSA__\n"
               "#endif\n")
     sub("osfmk/arm/pmap/pmap.c", anchor, anchor + "\n" + PPL_STUBS, "ppl stubs")
+
+
+    # 17. assembly stubs for Apple-only symbols (kpc, cache helper, monitor)
+    if read("osfmk/arm64/pebble_stubs.s") is None:
+        write("osfmk/arm64/pebble_stubs.s", STUBS_ASM)
+        report.append("CREATED  osfmk/arm64/pebble_stubs.s")
+
+    src = read("osfmk/conf/files.arm64")
+    if src is not None and "pebble_stubs.s" not in src:
+        write("osfmk/conf/files.arm64",
+              src + "osfmk/arm64/pebble_stubs.s\t\tstandard\n")
+        report.append("PATCHED  osfmk/conf/files.arm64 (stubs entry)")
 
     print("\n".join(report))
     bad = [r for r in report if r.startswith(("NOANCHOR", "MISSING"))]
