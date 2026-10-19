@@ -230,7 +230,7 @@ FBCON_C = '\n/******************************************************************
 
 EARLY_FB_MAP = '\n\t/*\n\t * pebble: map one 2 MB block VA=PA=0xf8c00000 so that early boot code\n\t * (before the pmap exists) can write the panel directly.  A fresh L1\n\t * page is carved from the bootstrap table free pointer and zeroed,\n\t * then create_bootstrap_mapping installs the block entry.\n\t */\n\tmov\tx1, x2\t\t\t\t\t// new L1 page\n\tadd\tx2, x2, PGBYTES\t\t\t\t// bump free pointer past it\n\tmov\tx13, x1\n\tmov\tx0, #(ARM_TTE_EMPTY)\n\tmov\tx6, #(TTE_PGENTRIES)\n2:\tstr\tx0, [x13], #8\n\tsubs\tx6, x6, #1\n\tb.ne\t2b\n\tMOV64\tx0, 0xf8c00000\n\tmov\tx4, x0\n\tmov\tx5, #1\n\tcreate_bootstrap_mapping x0, x4, x5, x1, x2, x6, x10, x11, x12, x13\n\n'
 
-PEBBLE_EARLY_C = "\n/* pebble: early console.  0xf8c60000 is mapped VA=PA by start.s before the\n * pmap exists, so this works from the very first C statement of arm_init. */\nextern unsigned char iso_font[256 * 16];\n\n#define PEBBLE_EARLY_FB     ((volatile unsigned int *)0xf8c60000UL)\n#define PEBBLE_EARLY_STRIDE 4480\n#define PEBBLE_EARLY_SCALE  4\n\nstatic void\npebble_early_puts(const char *s)\n{\n\tstatic unsigned int row;\n\tunsigned int col = 0;\n\tvolatile unsigned int *fb = PEBBLE_EARLY_FB;\n\n\tfor (; *s; s++) {\n\t\tchar c = *s;\n\n\t\tif (c == '\\n') {\n\t\t\trow++;\n\t\t\tcol = 0;\n\t\t\tcontinue;\n\t\t}\n\t\t{\n\t\t\tconst unsigned char *glyph = iso_font + (unsigned char)c * 16;\n\t\t\tunsigned int x0 = 40 + col * 8 * PEBBLE_EARLY_SCALE;\n\t\t\tunsigned int y0 = 300 + row * 16 * PEBBLE_EARLY_SCALE;\n\n\t\t\tfor (unsigned int gy = 0; gy < 16; gy++) {\n\t\t\t\tfor (unsigned int sy = 0; sy < PEBBLE_EARLY_SCALE; sy++) {\n\t\t\t\t\tvolatile unsigned int *line = fb +\n\t\t\t\t\t    (y0 + gy * PEBBLE_EARLY_SCALE + sy) *\n\t\t\t\t\t    (PEBBLE_EARLY_STRIDE / 4) + x0;\n\t\t\t\t\tfor (unsigned int gx = 0; gx < 8; gx++) {\n\t\t\t\t\t\tunsigned int px = (glyph[gy] & (1u << gx)) ?\n\t\t\t\t\t\t    0xffffffffu : 0xff000000u;\n\t\t\t\t\t\tfor (unsigned int sx = 0; sx < PEBBLE_EARLY_SCALE; sx++) {\n\t\t\t\t\t\t\tline[gx * PEBBLE_EARLY_SCALE + sx] = px;\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\tcol++;\n\t}\n}\n"
+PEBBLE_EARLY_C = "\n/* pebble: checkpoints drawn from arm_init.  Uses ml_io_map, so it is a no-op\n * until arm_vm_init() has run; that is deliberate - writing the framebuffer\n * before the pmap exists would fault. */\nextern unsigned char iso_font[256 * 16];\n\n#define PEBBLE_EARLY_FB     0xf8c60000UL\n#define PEBBLE_EARLY_STRIDE 4480\n#define PEBBLE_EARLY_SCALE  2\n\nstatic volatile unsigned int *pebble_early_base;\nstatic unsigned int pebble_early_row;\n\nstatic void\npebble_early_puts(const char *s)\n{\n\tif (pebble_early_base == NULL) {\n\t\tpebble_early_base = (volatile unsigned int *)ml_io_map(\n\t\t    PEBBLE_EARLY_FB, PEBBLE_EARLY_STRIDE * 2436);\n\t\tif (pebble_early_base == NULL) {\n\t\t\treturn;\n\t\t}\n\t}\n\tfor (; *s; s++) {\n\t\tif (*s == '\\n') {\n\t\t\tpebble_early_row++;\n\t\t\tcontinue;\n\t\t}\n\t\t{\n\t\t\tconst unsigned char *glyph = iso_font + (unsigned char)*s * 16;\n\t\t\tunsigned int x0 = 40 + (pebble_early_row & 0) ;\n\t\t\tunsigned int y0 = 200 + pebble_early_row * 16 * PEBBLE_EARLY_SCALE;\n\n\t\t\tfor (unsigned int gy = 0; gy < 16; gy++) {\n\t\t\t\tfor (unsigned int sy = 0; sy < PEBBLE_EARLY_SCALE; sy++) {\n\t\t\t\t\tvolatile unsigned int *line = pebble_early_base +\n\t\t\t\t\t    (y0 + gy * PEBBLE_EARLY_SCALE + sy) *\n\t\t\t\t\t    (PEBBLE_EARLY_STRIDE / 4);\n\t\t\t\t\tfor (unsigned int gx = 0; gx < 8; gx++) {\n\t\t\t\t\t\tunsigned int px = (glyph[gy] & (1u << gx)) ?\n\t\t\t\t\t\t    0xffffffffu : 0xff000000u;\n\t\t\t\t\t\tfor (unsigned int sx = 0; sx < PEBBLE_EARLY_SCALE; sx++) {\n\t\t\t\t\t\t\tline[x0 + gx * PEBBLE_EARLY_SCALE + sx] = px;\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\tx0 = 0;\n\t}\n}\n"
 
 PPL_STUBS = "\n/* ---- PEBBLE_PPL_STUBS ----------------------------------------------------\n * Apple's closed Page Protection Layer supplies these helpers and their\n * declarations.  A Gunyah guest has no PPL, and the open drop never declares\n * them, but pmap.c calls several of them unconditionally.\n */\n#ifndef PEBBLE_PPL_STUBS\n#define PEBBLE_PPL_STUBS\n\n/* The closed uat.h normally supplies pte_t. */\n#ifndef PEBBLE_PTE_T_DEFINED\n#define PEBBLE_PTE_T_DEFINED\ntypedef uint64_t pte_t;\n#endif\n\nstatic inline void *\nptep_get_iommu(pte_t pte)\n{\n\t(void)pte;\n\treturn NULL;\n}\n\nstatic inline void\npmap_ppl_lockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_unlockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_lockdown_page(vm_address_t va, int flags, bool ppl_writable)\n{\n\t(void)va;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic void pmap_phys_write_disable(vm_address_t va);\n\n#endif /* PEBBLE_PPL_STUBS */\n"
 
@@ -432,20 +432,14 @@ def main():
             "stall at arm_init")
 
 
-    # 20. early framebuffer mapping in start.s, so arm_init can draw before
-    #     the pmap exists (that is what makes an early console possible).
-    sub("osfmk/arm64/start.s",
-        "\t/* Ensure TTEs are visible */",
-        EARLY_FB_MAP + "\t/* Ensure TTEs are visible */",
-        "early framebuffer mapping")
-
-
     # 21. early console: draw from arm_init, before kprintf exists
     src = read("osfmk/arm/arm_init.c")
     if src is not None and "pebble_early_puts" not in src:
         src = PEBBLE_EARLY_C + src
-        src = src.replace("\tarm_setup_pre_sign();",
-                          '\tpebble_early_puts("PEBBLE arm_init\\n");\n\tarm_setup_pre_sign();', 1)
+        src = src.replace("\tarm_vm_init(xmaxmem, args);",
+                          '\tarm_vm_init(xmaxmem, args);\n\tpebble_early_puts("PEBBLE pmap ok\\n");', 1)
+        src = src.replace("\tPE_init_platform(TRUE, &BootCpuData);",
+                          '\tPE_init_platform(TRUE, &BootCpuData);\n\tpebble_early_puts("PEBBLE irq ok\\n");', 1)
         write("osfmk/arm/arm_init.c", src)
         report.append("PATCHED  osfmk/arm/arm_init.c (early console)")
 
