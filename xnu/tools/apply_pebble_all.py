@@ -224,6 +224,9 @@ STUBS = {
 }
 
 
+PPL_STUBS = "\n/* ---- PEBBLE_PPL_STUBS ----------------------------------------------------\n * Apple's closed Page Protection Layer supplies these helpers and their\n * declarations.  A Gunyah guest has no PPL, and the open drop never declares\n * them, but pmap.c calls several of them unconditionally.\n */\n#ifndef PEBBLE_PPL_STUBS\n#define PEBBLE_PPL_STUBS\n\nstatic inline void *\nptep_get_iommu(pte_t pte)\n{\n\t(void)pte;\n\treturn NULL;\n}\n\nstatic inline void\npmap_ppl_lockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_unlockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_lockdown_page(vm_address_t va, int flags, bool ppl_writable)\n{\n\t(void)va;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic void pmap_phys_write_disable(vm_address_t va);\n\n#endif /* PEBBLE_PPL_STUBS */\n"
+
+
 def sub(rel, old, new, note):
     src = read(rel)
     if src is None:
@@ -250,7 +253,7 @@ def main():
     sub("makedefs/MakeInc.def",
         "MACHINE_FLAGS_ARM64_BCM2837 = -DARM64_BOARD_CONFIG_BCM2837",
         "MACHINE_FLAGS_ARM64_BCM2837 = -DARM64_BOARD_CONFIG_BCM2837\n"
-        "MACHINE_FLAGS_ARM64_PEBBLE = -DARM64_BOARD_CONFIG_PEBBLE -march=armv8.2-a -D__ARM_VMSA__=8",
+        "MACHINE_FLAGS_ARM64_PEBBLE = -DARM64_BOARD_CONFIG_PEBBLE -march=armv8.2-a -D__ARM_VMSA__=8 -D__ARM_16K_PG__",
         "machine flags")
 
     # 3. keep arm64 (not arm64e) for PEBBLE
@@ -366,6 +369,13 @@ def main():
         if read(path) is None:
             write(path, body)
             report.append("CREATED  %s (stub)" % path)
+
+
+    # 15. PPL/IOMMU helpers that live only in Apple's closed sources
+    src = read("osfmk/arm/pmap/pmap.h")
+    if src is not None and "PEBBLE_PPL_STUBS" not in src:
+        write("osfmk/arm/pmap/pmap.h", src + PPL_STUBS)
+        report.append("PATCHED  osfmk/arm/pmap/pmap.h (ppl stubs)")
 
     print("\n".join(report))
     bad = [r for r in report if r.startswith(("NOANCHOR", "MISSING"))]
