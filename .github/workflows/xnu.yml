@@ -56,7 +56,7 @@ jobs:
           python3 - <<'PY'
           p = "dxb/build.sh"
           s = open(p).read()
-          hook = '    patches\n    python3 "$(dirname "$0")/apply_pebble_all.py" "${WORK_DIR}/xnu"\n'
+          hook = '    patches\n    PEBBLE_STALL=arm_init python3 "$(dirname "$0")/apply_pebble_all.py" "${WORK_DIR}/xnu"\n'
           assert "\n    patches\n" in s, "patches call not found in build.sh"
           s = s.replace("\n    patches\n", "\n" + hook, 1)
           open(p, "w").write(s)
