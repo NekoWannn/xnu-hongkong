@@ -211,6 +211,9 @@ def read(rel):
 
 def write(rel, text):
     p = os.path.join(XNU, rel)
+    d = os.path.dirname(p)
+    if d and not os.path.isdir(d):
+        os.makedirs(d)
     open(p, "w", encoding="utf-8", errors="surrogateescape").write(text)
 
 
