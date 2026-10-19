@@ -250,7 +250,7 @@ def main():
     sub("makedefs/MakeInc.def",
         "MACHINE_FLAGS_ARM64_BCM2837 = -DARM64_BOARD_CONFIG_BCM2837",
         "MACHINE_FLAGS_ARM64_BCM2837 = -DARM64_BOARD_CONFIG_BCM2837\n"
-        "MACHINE_FLAGS_ARM64_PEBBLE = -DARM64_BOARD_CONFIG_PEBBLE -march=armv8.2-a",
+        "MACHINE_FLAGS_ARM64_PEBBLE = -DARM64_BOARD_CONFIG_PEBBLE -march=armv8.2-a -D__ARM_VMSA__=8",
         "machine flags")
 
     # 3. keep arm64 (not arm64e) for PEBBLE
