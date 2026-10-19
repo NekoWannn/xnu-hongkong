@@ -1,0 +1,105 @@
+diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
+--- a/pexpert/arm/pe_fiq.c
++++ b/pexpert/arm/pe_fiq.c
+@@ -12,7 +12,7 @@
+ #include <pexpert/arm64/board_config.h>
+ 
+ 
+-#if HAS_GIC_V3
++#if HAS_GIC_V3 && !defined(PEBBLE)
+ #define GICR_WAKE_TIMEOUT_NS (1000000000ULL) // timeout for redistributor wakeup (default 1s)
+ MACHINE_TIMEOUT(gicr_wake_timeout_ns, "gicr-wake-timeout", GICR_WAKE_TIMEOUT_NS, MACHINE_TIMEOUT_UNIT_NSEC, NULL);
+ 
+@@ -169,6 +169,92 @@
+ 	__builtin_arm_wsr64("ICC_IGRPEN0_EL1", 1);
+ 	__builtin_arm_isb(ISB_SY);
+ }
++#elif defined(PEBBLE)
++/*
++ * SM8950: Qualcomm GICv3.  TrustZone owns Group 0, so XNU must drive the
++ * controller in Group 1: group-1 interrupts, BPR1/PMR, IGRPEN1, and EOI
++ * through ICC_EOIR1_EL1 (the dispatch side lives in sleh_irq).
++ *
++ * Every constant here is written out rather than borrowed from the Apple
++ * GIC headers, which only define them for the BCM2837 board.
++ */
++#define PEBBLE_GICR_TYPER            0x0008ULL
++#define PEBBLE_GICR_WAKER            0x0014ULL
++#define PEBBLE_GICR_PROCESSORSLEEP   (1u << 1)
++#define PEBBLE_GICR_CHILDRENASLEEP   (1u << 2)
++#define PEBBLE_GICR_TYPER_LAST       (1ULL << 4)
++
++void
++pe_init_fiq(void)
++{
++	vm_offset_t gicd = ml_io_map(PEBBLE_GICD_BASE, PEBBLE_GICD_SIZE);
++	vm_offset_t gicr = ml_io_map(PEBBLE_GICR_BASE, PEBBLE_GICR_SIZE);
++	vm_offset_t pe = 0;
++	uint64_t mpidr = __builtin_arm_rsr64("MPIDR_EL1");
++	uint32_t want = (uint32_t)mpidr & 0xFFFFu; /* Aff1:Aff0 */
++
++	if (!gicd || !gicr) {
++		panic("%s: cannot map GIC regions", __func__);
++	}
++
++	for (vm_offset_t off = 0; off < PEBBLE_GICR_SIZE; off += PEBBLE_GICR_PE_SIZE) {
++		uint64_t typer = *(volatile uint64_t *)(gicr + off + PEBBLE_GICR_TYPER);
++		uint32_t aff = (uint32_t)(typer >> 32) & 0xFFFFu;
++
++		if (aff == want) {
++			pe = gicr + off;
++			break;
++		}
++		if (typer & PEBBLE_GICR_TYPER_LAST) {
++			break;
++		}
++	}
++	if (!pe) {
++		panic("%s: no redistributor for this core", __func__);
++	}
++
++	/* wake this redistributor */
++	uint32_t waker = *(volatile uint32_t *)(pe + PEBBLE_GICR_WAKER);
++	if (waker & PEBBLE_GICR_CHILDRENASLEEP) {
++		waker &= ~PEBBLE_GICR_PROCESSORSLEEP;
++		*(volatile uint32_t *)(pe + PEBBLE_GICR_WAKER) = waker;
++		while (*(volatile uint32_t *)(pe + PEBBLE_GICR_WAKER) &
++		    PEBBLE_GICR_CHILDRENASLEEP) {
++			/* spin until the redistributor is awake */
++		}
++	}
++
++	/* every interrupt we can see belongs to Group 1 */
++	*(volatile uint32_t *)(pe + PEBBLE_GICR_IGROUPR0) = 0xFFFFFFFFu;
++	*(volatile uint32_t *)(pe + PEBBLE_GICR_IGRPMODR0) = 0x00000000u;
++	*(volatile uint32_t *)(pe + PEBBLE_GICR_IPRIORITYR) = 0xA0A0A0A0u;
++
++	/* virtual timer PPI plus the SGI range used for IPIs */
++	*(volatile uint32_t *)(pe + PEBBLE_GICR_ISENABLER0) =
++	    (1u << PEBBLE_VTIMER_INTID) | 0x0000FFFFu;
++
++	/* system register access */
++	uint64_t sre = __builtin_arm_rsr64("ICC_SRE_EL1");
++	sre |= 1ULL; /* SRE */
++	__builtin_arm_wsr64("ICC_SRE_EL1", sre);
++	__builtin_arm_isb(0xF);
++
++	/* Group 1 priority and EOI mode */
++	__builtin_arm_wsr64("ICC_BPR1_EL1", 0);
++	__builtin_arm_wsr64("ICC_PMR_EL1", 0xFF);
++
++	uint64_t ctlr = __builtin_arm_rsr64("ICC_CTLR_EL1");
++	ctlr &= ~(1ULL << 1); /* EOImode = 0 */
++	__builtin_arm_wsr64("ICC_CTLR_EL1", ctlr);
++
++	/* forward Group 1 to the CPU interface */
++	uint32_t gicd_ctlr = *(volatile uint32_t *)gicd;
++	gicd_ctlr |= PEBBLE_GICD_CTLR_ENABLEGRP1 | PEBBLE_GICD_CTLR_ARE_NS;
++	*(volatile uint32_t *)gicd = gicd_ctlr;
++
++	__builtin_arm_wsr64("ICC_IGRPEN1_EL1", 1);
++	__builtin_arm_isb(0xF);
++}
+ #else
+ void
+ pe_init_fiq()
