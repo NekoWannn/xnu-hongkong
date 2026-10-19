@@ -23,6 +23,9 @@ PEBBLE_H = r"""/*
 #ifndef _PEXPERT_ARM64_PEBBLE_H
 #define _PEXPERT_ARM64_PEBBLE_H
 
+/* the machine-config symbol every #if defined(PEBBLE) keys off */
+#define PEBBLE           1
+
 #define NO_MONITOR       1
 #define NO_ECORE         1
 #define NO_APPLEARMSMP   1
@@ -271,7 +274,27 @@ def main():
         "#endif",
         "sctlr readback")
 
-    # 8. GIC bring-up
+    # 8. cache geometry (proc_reg.h #errors out without a board branch)
+    sub("osfmk/arm64/proc_reg.h",
+        "#elif defined (VMAPPLE)",
+        "#elif defined (PEBBLE) /* Qualcomm Oryon, 64-byte cache lines */\n"
+        "\n"
+        "/* I-Cache. */\n"
+        "#define MMU_I_CLINE 6\n"
+        "\n"
+        "/* D-Cache. */\n"
+        "#define MMU_CLINE   6\n"
+        "\n"
+        "#elif defined (VMAPPLE)",
+        "proc_reg board branch")
+
+    # 9. export the new header so #include <pexpert/arm64/PEBBLE.h> resolves
+    sub("pexpert/pexpert/arm64/Makefile",
+        "\tBCM2837.h",
+        "\tBCM2837.h \\\n\tPEBBLE.h",
+        "export PEBBLE.h")
+
+    # 10. GIC bring-up
     sub("pexpert/arm/pe_fiq.c",
         "#if HAS_GIC_V3\n#define GICR_WAKE_TIMEOUT_NS",
         "#if HAS_GIC_V3 && !defined(PEBBLE)\n#define GICR_WAKE_TIMEOUT_NS",
