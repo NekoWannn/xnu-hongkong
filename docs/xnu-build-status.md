@@ -80,3 +80,28 @@ immediately before that function instead of near the include list.
 
 Fastest next move: locate `pmap_page_protect`'s signature in `pmap.c`, anchor
 `sub()` on it, and put `PPL_STUBS` in front. No other change is needed.
+## Update: link reached, 32 symbols left (run 39314750184)
+
+Assembly and the open pmap now build:
+
+```
+[arm64 pebble]  AS start.o
+[arm64 pebble]  AS cswitch.o
+[arm64 pebble]  LD kernel.development.pebble.unstripped
+```
+
+Zero compile errors. Undefined symbols dropped **261 -> 32**, in three groups:
+
+1. **kpc** (~25): `kpc_arch_init`, `kpc_get_*`, `kpc_configurable_*`.
+   `osfmk/kern/kpc_common.c` is compiled but `osfmk/arm64/kpc.c` is excluded,
+   so exclude the rest of the subsystem as well (it programs Apple PMU).
+2. **`_CleanPoC_DcacheRegion_Force_nopreempt_nohid`**, referenced by
+   `pmap_batch_set_cache_attributes_internal`. Lives in `arm64/caches_asm.s`;
+   check whether the file is actually in the object list and whether the
+   symbol is conditionally compiled out.
+3. **PLK section symbols**: `__PLK_DATA_CONST`, `__PLK_TEXT_EXEC`,
+   `__PLK_LINKEDIT`, `__PLK_LLVM_COV`. These belong to Apple's Page-Locked
+   Kernel; a non-PPL build must not reference them.
+
+All three are "Apple-only, should not exist without PPL", so option A is
+converging rather than changing direction.
