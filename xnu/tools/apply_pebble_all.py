@@ -26,6 +26,11 @@ PEBBLE_H = r"""/*
 /* the machine-config symbol every #if defined(PEBBLE) keys off */
 #define PEBBLE           1
 
+/* arm64 builds leave __ARM_ARCH__ undefined; cpuid.c keys off it */
+#ifndef __ARM_ARCH__
+#define __ARM_ARCH__     8
+#endif
+
 #define NO_MONITOR       1
 #define NO_ECORE         1
 #define NO_APPLEARMSMP   1
@@ -71,6 +76,8 @@ BOARD_BLOCK = """#ifdef ARM64_BOARD_CONFIG_PEBBLE
 """
 
 SLEH_PEBBLE = """#if defined(PEBBLE)
+	extern void cpu_signal_handler(void);
+
 	/*
 	 * Qualcomm GICv3: TrustZone owns Group 0, so timer and IPI interrupts
 	 * arrive as Group 1 IRQs and must be acknowledged here.
@@ -287,6 +294,13 @@ def main():
         "\n"
         "#elif defined (VMAPPLE)",
         "proc_reg board branch")
+
+    # 8b. pmap.h declares 'reserved10' twice when neither Rosetta nor PAC is
+    # configured (upstream only builds Apple boards), which breaks PEBBLE.
+    sub("osfmk/arm/pmap/pmap.h",
+        "#else\n\tbool reserved10;\n#endif /* HAS_APPLE_PAC */",
+        "#else\n\tbool reserved10_reserved;\n#endif /* HAS_APPLE_PAC */",
+        "pmap duplicate field")
 
     # 9. export the new header so #include <pexpert/arm64/PEBBLE.h> resolves
     sub("pexpert/pexpert/arm64/Makefile",
