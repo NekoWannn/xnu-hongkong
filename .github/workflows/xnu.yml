@@ -103,9 +103,12 @@ jobs:
         if: always()
         run: |
           mkdir -p out
+          O=dxb/build/xnu.obj/DEVELOPMENT_ARM64_PEBBLE
           cp -R dxb/fakeroot/System/Library/Kernels/. out/ 2>/dev/null || true
+          cp "$O"/kernel.* out/ 2>/dev/null || true
+          cp -R "$O"/kernel.*.dSYM out/ 2>/dev/null || true
           ls -la out
-          (cd out && shasum -a 256 kernel.* > SHA256SUMS) || true
+          (cd out && shasum -a 256 * > SHA256SUMS) || true
 
       - uses: actions/upload-artifact@v4
         if: always()
