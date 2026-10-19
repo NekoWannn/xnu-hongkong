@@ -56,3 +56,27 @@ up doing and is known to compile.
 - The workflow only auto-triggers on `xnu/tools/**` and the workflow file;
   patch uploads need an explicit dispatch.
 - Never put backticks around `$O` in the workflow's shell blocks.
+
+## Update: option A progress (run 39311889278)
+
+Done and confirmed working:
+
+- `-D__ARM_16K_PG__` added to `MACHINE_FLAGS_ARM64_PEBBLE`; `ARM_PGSHIFT` is
+  selected in `osfmk/arm64/proc_reg.h:1157`, so the 4K branch and its
+  `static_assert` are gone. The kernel now builds for the 16K granule the
+  hardware reports (`MMFR0.TGran16 = 1`).
+- PPL/IOMMU declarations are supplied by the applier.
+
+Remaining, single issue:
+
+```
+osfmk/arm/pmap/pmap.c:132:16: error: unknown type name 'pte_t'
+```
+
+The stub block has to sit after `pte_t` becomes visible. It is **not** defined
+in `pmap.h` or `pmap_pt_geometry.h`; the first use is inside
+`pmap_page_protect()` around line 4676, so the block should be inserted
+immediately before that function instead of near the include list.
+
+Fastest next move: locate `pmap_page_protect`'s signature in `pmap.c`, anchor
+`sub()` on it, and put `PPL_STUBS` in front. No other change is needed.
