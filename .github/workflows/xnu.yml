@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       macos_version:
-        description: macOS release whose xnu to build (13.5 = xnu-8796, iOS 16 era)
+        description: macOS release whose xnu to build (13.5 = xnu-8796.141.3)
         default: "13.5"
       kernel_config:
         description: RELEASE / DEVELOPMENT / DEBUG
@@ -18,7 +18,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "xnu/patches/**"
+      - "xnu/tools/**"
       - ".github/workflows/xnu.yml"
 
 concurrency:
@@ -34,7 +34,7 @@ env:
 
 jobs:
   build:
-    # macos-14 still ships Xcode 15.x: its iig matches the xnu-8796 IORPC ABI
+    # macos-14 ships Xcode 15.x: its iig matches the xnu-8796 IORPC ABI
     runs-on: macos-14
     timeout-minutes: 120
     steps:
@@ -45,17 +45,27 @@ jobs:
           git init -q dxb
           git -C dxb fetch -q --depth 1 "$DXB_REPO" "$DXB_SHA"
           git -C dxb checkout -q FETCH_HEAD
-          # 12.5-14.3 use the top-level patches dir; ours go next to blacktop's
-          cp xnu/patches/*.patch dxb/patches/
-          # libfirehose_kernel is built arm64e-only; the PEBBLE kernel is plain arm64
+
+          # libfirehose_kernel is built arm64e-only; the PEBBLE kernel is arm64
           sed -i '' 's/ARCHS="x86_64 arm64e" VALID_ARCHS="x86_64 arm64e"/ARCHS="x86_64 arm64e arm64" VALID_ARCHS="x86_64 arm64e arm64"/' dxb/build.sh
-          grep -c 'VALID_ARCHS="x86_64 arm64e arm64"' dxb/build.sh
-          ls dxb/patches
+
+          # Hook our machine-config edits in right after build.sh applies its
+          # own patch set: patches conflict with ours (they rewrite the same
+          # files), so we edit by anchor string instead of by patch context.
+          cp xnu/tools/apply_pebble_all.py dxb/
+          python3 - <<'PY'
+          p = "dxb/build.sh"
+          s = open(p).read()
+          hook = '    patches\n    python3 "$(dirname "$0")/apply_pebble_all.py" "${WORK_DIR}/xnu"\n'
+          assert "\n    patches\n" in s, "patches call not found in build.sh"
+          s = s.replace("\n    patches\n", "\n" + hook, 1)
+          open(p, "w").write(s)
+          PY
+          grep -n 'apply_pebble_all' dxb/build.sh
 
       - name: Deps
         run: |
           brew install jq gum bash cmake ninja
-          # build.sh only checks that xcodes exists (Xcode is preinstalled)
           printf '#!/bin/sh\nexit 0\n' | sudo tee /usr/local/bin/xcodes >/dev/null
           sudo chmod +x /usr/local/bin/xcodes
           sw_vers
@@ -63,7 +73,6 @@ jobs:
           echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
           sudo xcode-select -s "$XC"
           xcodebuild -version
-          xcrun --find iig
 
       - name: Build
         working-directory: dxb
