@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..6c63bbd
 --- /dev/null
 +++ b/config/MASTER.arm64.pebble
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,121 @@
 +#
 +# pebble (Redmi Note 10 Pro, SM7150): MASTER.arm64.MacOSX plus the open-source
 +# arm64 assembly and pmap (nos_arm_asm, nos_arm_pmap). Apple's own SoC configs
@@ -118,3 +118,11 @@ index 0000000..6c63bbd
 +
 +options   CONFIG_RESLIDE_SHARED_CACHE		# <reslide_shared_cache>
 +options   CONFIG_KERNEL_TBI		# <kernel_tbi>
+
++# Open-source arm64 assembly and pmap: files.arm64 gates start.s, cswitch.s,
++# locore.s and friends on these options. Without them the kernel links with
++# __start and _call_continuation undefined.
++options		nos_arm_asm
++options		nos_arm_pmap
++options		config_pmap_ppl
++
