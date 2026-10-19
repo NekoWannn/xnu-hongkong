@@ -90,6 +90,13 @@ jobs:
           find "$O" -name '*.o' 2>/dev/null | wc -l || true
           echo "== component dirs =="
           ls "$O" 2>/dev/null | head -20 || true
+          echo "== link.filelist samples =="
+          grep -c . "`$O/link.filelist" || true
+          grep -E 'start\.o|cswitch\.o|machine_routines\.o|copyio' "`$O/link.filelist" | head -8 || echo "none of start/cswitch/machine_routines"
+          echo "== osfmk.list head =="
+          head -5 "`$O/osfmk/DEVELOPMENT/osfmk.filelist" || true
+          echo "== obj dir =="
+          ls "`$O/osfmk/DEVELOPMENT" | head -8 || true
           echo "== osfmk/DEVELOPMENT =="
           ls "$O/osfmk/DEVELOPMENT" 2>/dev/null | head -10 || true
       - name: Collect
