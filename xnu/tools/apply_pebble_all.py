@@ -447,7 +447,9 @@ def main():
         src = src.replace("void arm_init(boot_args * args);",
                           PEBBLE_EARLY_C + "void arm_init(boot_args * args);", 1)
         src = src.replace("\tarm_vm_init(xmaxmem, args);",
-                          '\tpebble_early_puts("PEBBLE dt ok\\n");\n\tarm_vm_init(xmaxmem, args);', 1)
+                          '\tpebble_early_puts("PEBBLE dt ok\\n");\n'
+                          '\tfor (;;) { __asm__ volatile("wfe"); }\n'
+                          '\tarm_vm_init(xmaxmem, args);', 1)
         src = src.replace("\tPE_init_platform(FALSE, args);",
                           '\tpebble_early_puts("PEBBLE platform ok\\n");\n\tPE_init_platform(FALSE, args);', 1)
         write("osfmk/arm/arm_init.c", src)
