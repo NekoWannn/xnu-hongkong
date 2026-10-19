@@ -491,6 +491,17 @@ def main():
         write("osfmk/arm/arm_init.c", src)
         report.append("PATCHED  osfmk/arm/arm_init.c (blue marker)")
 
+    # 22. start.s: skip Apple-only steps that have no PEBBLE equivalent and
+    #     would fault or jump through an empty tunables table.
+    src = read("osfmk/arm64/start.s")
+    if src is not None and "PEBBLE: no tunables" not in src:
+        src = src.replace("\tAPPLY_TUNABLES x12, x13, x14\n",
+                          "\t/* PEBBLE: no tunables */\n", 1)
+        src = src.replace("#if HAS_CLUSTER\n",
+                          "#if HAS_CLUSTER && !defined(PEBBLE)\n", 1)
+        write("osfmk/arm64/start.s", src)
+        report.append("PATCHED  osfmk/arm64/start.s (skip tunables, no CPU_OVRD)")
+
     print("\n".join(report))
     bad = [r for r in report if r.startswith(("NOANCHOR", "MISSING"))]
     print("\n%d edits, %d problems" % (len(report), len(bad)))
