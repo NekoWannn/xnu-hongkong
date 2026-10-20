@@ -496,7 +496,7 @@ index c86b9e7..9f2fa3f 100644
  	sweet_log_append(c, size);
  	if (sweet_console_muted && !panic_active()) {
 diff --git a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
-index 19f27cd..b0a1b83 100644
+index 19f27cd..29d1364 100644
 --- a/pexpert/arm/pe_serial.c
 +++ b/pexpert/arm/pe_serial.c
 @@ -746,7 +746,9 @@ fbcon_init(void)
@@ -510,13 +510,3 @@ index 19f27cd..b0a1b83 100644
  	for (uint32_t r = 0; r < fbcon_rows; r++) {
  		fbcon_clear_row(r);
  	}
-@@ -835,7 +837,8 @@ fbcon_probe(void)
- 		return;
- 	}
- 	sweet_early_mark(17, "fbcon config read; mapping");
--	fbcon_base = (volatile uint32_t *)ml_io_map_wcomb(reg[0], reg[1]);
-+	/* hongkong debug: TTBR0 is kept, so the physical address is mapped */
-+	fbcon_base = (volatile uint32_t *)(uintptr_t)reg[0];
- 	sweet_early_mark(18, "fbcon mapping returned");
- 	if (fbcon_base != NULL) {
- 		register_serial_functions(&sweet_fbcon_serial_functions);
