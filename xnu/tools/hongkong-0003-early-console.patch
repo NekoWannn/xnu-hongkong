@@ -1,5 +1,5 @@
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index 06bb568..3c1d53e 100644
+index 06bb568..d605221 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
 @@ -1843,9 +1843,9 @@ sweet_early_map_final(void)
@@ -14,7 +14,19 @@ index 06bb568..3c1d53e 100644
  	    ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX;
  	__asm__ volatile("dsb ishst" ::: "memory");
  }
-@@ -2190,7 +2190,7 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2182,15 +2182,19 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+ #if defined(SWEET)
+ 	/* phystokv() must still refer to the bootstrap aperture here. */
+ 	sweet_early_map_final();
++	sweet_early_mark(81, "final block installed");
+ #endif
+ 	arm_vm_physmap_init(args);
+ 	set_mmu_ttb_alternate(cpu_ttep & TTBR_BADDR_MASK);
++#if defined(SWEET)
++	sweet_early_mark(82, "final TTBR1 live");
++#endif
+ 
+ 	ml_enable_monitor();
  
  #if defined(SWEET)
  	/* The final TTBR1 is live; leave the outgoing VA=PA framebuffer alias. */
