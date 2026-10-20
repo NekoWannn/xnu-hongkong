@@ -1,5 +1,5 @@
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index 06bb568..4f0a3d4 100644
+index 06bb568..0788f16 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
 @@ -1833,21 +1833,39 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
@@ -55,7 +55,7 @@ index 06bb568..4f0a3d4 100644
  }
  #endif
  
-@@ -2182,15 +2200,19 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2182,15 +2200,29 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  #if defined(SWEET)
  	/* phystokv() must still refer to the bootstrap aperture here. */
  	sweet_early_map_final();
@@ -63,6 +63,16 @@ index 06bb568..4f0a3d4 100644
  #endif
  	arm_vm_physmap_init(args);
  	set_mmu_ttb_alternate(cpu_ttep & TTBR_BADDR_MASK);
++#if defined(SWEET)
++	/*
++	 * The block installed before arm_vm_physmap_init() landed in the outgoing
++	 * root; install it again in the final one and make the TLB see it before
++	 * the console touches the alias.
++	 */
++	cpu_tte = (tt_entry_t *)(phystokv(cpu_ttep));
++	sweet_early_fb_va = sweet_early_map_final();
++	flush_mmu_tlb();
++#endif
 +#if defined(SWEET)
 +	sweet_early_mark(18, "final TTBR1 live");
 +#endif
