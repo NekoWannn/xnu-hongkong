@@ -1,8 +1,24 @@
 diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
-index 68612db..fc04525 100644
+index 68612db..9f3f251 100644
 --- a/bsd/kern/kern_exec.c
 +++ b/bsd/kern/kern_exec.c
-@@ -6763,6 +6763,8 @@ load_init_program_at_path(proc_t p, user_addr_t scratch_addr, const char* path)
+@@ -2176,6 +2176,7 @@ again:
+ 	}
+ 	imgp->ip_ndp = ndp;     /* successful namei(); call nameidone() later */
+ 	imgp->ip_vp = ndp->ni_vp;       /* if set, need to vnode_put() at some point */
++	printf("SWEET: execve namei ok\n");
+ 
+ 	/*
+ 	 * Before we start the transition from binary A to binary B, make
+@@ -2197,6 +2198,7 @@ again:
+ 	}
+ 
+ 	error = exec_check_permissions(imgp);
++	printf("SWEET: exec perms -> %d\n", error);
+ 	if (error) {
+ 		goto bad;
+ 	}
+@@ -6763,6 +6765,8 @@ load_init_program_at_path(proc_t p, user_addr_t scratch_addr, const char* path)
  	assert(scratch_addr);
  	assert(path);
  
@@ -11,6 +27,18 @@ index 68612db..fc04525 100644
  	/*
  	 * Copy out program name.
  	 */
+@@ -6828,7 +6832,10 @@ load_init_program_at_path(proc_t p, user_addr_t scratch_addr, const char* path)
+ 	 */
+ 	set_security_token(p);
+ 
+-	return execve(p, &init_exec_args, retval);
++	printf("SWEET: calling execve\n");
++	int _sweet_e = execve(p, &init_exec_args, retval);
++	printf("SWEET: execve returned %d\n", _sweet_e);
++	return _sweet_e;
+ }
+ 
+ static const char * init_programs[] = {
 diff --git a/iokit/Kernel/arm/SweetCPU.cpp b/iokit/Kernel/arm/SweetCPU.cpp
 index 2545cf9..820de8a 100644
 --- a/iokit/Kernel/arm/SweetCPU.cpp
