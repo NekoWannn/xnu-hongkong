@@ -468,8 +468,7 @@ def main():
     if src is not None and "Lpebble_mark_row" not in src:
         src = src.replace("\tmov\t\tx20, x0\n",
                           "\tmov\t\tx20, x0\n" + PEBBLE_STAGE0, 1)
-        src = src.replace("\t/* Ensure TTEs are visible */",
-                          PEBBLE_FB_BLOCK + "\t/* Ensure TTEs are visible */", 1)
+        src = src + PEBBLE_TABLE   # keep it out of the code stream
         write("osfmk/arm64/start.s", src)
         report.append("PATCHED  osfmk/arm64/start.s (early framebuffer)")
 
@@ -510,8 +509,7 @@ def main():
     if src is not None and "Lpebble_crash" not in src:
         src = src.replace("\tMOV64   x0, SCTLR_EL1_DEFAULT\n",
                           PEBBLE_VEC + "\tMOV64   x0, SCTLR_EL1_DEFAULT\n", 1)
-        src = src.replace("\t/* Ensure TTEs are visible */",
-                          PEBBLE_TABLE + "\t/* Ensure TTEs are visible */", 1)
+        src = src + PEBBLE_TABLE   # keep it out of the code stream
         write("osfmk/arm64/start.s", src)
         report.append("PATCHED  osfmk/arm64/start.s (crash vectors)")
 
