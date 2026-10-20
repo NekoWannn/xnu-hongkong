@@ -234,3 +234,45 @@ The applier understands `PEBBLE_STALL=<site>` and can insert a `wfe` loop at a
 given site (currently `arm_init`). The workflow passes it through, so a single
 dispatch answers "did XNU reach this point?" by whether the phone hangs or
 reboots.
+## Where the kernel stops (measured, run 39364647773 + current shim)
+
+Screen markers are drawn at fixed rows and are unambiguous once the shim is
+silent.  Latest observation, five bands, all visible:
+
+```
+red    (row 1200)  after set_mmu_ttb      -> executed
+green  (row 1300)  after SCTLR_EL1 (MMU on)-> executed
+white  (row ~1100) entry                  -> executed
+yellow (row 1400)  after MIDR_EL1         -> executed
+cyan   (row 1500)  just before the return -> executed
+```
+
+So the whole bootstrap page-table path works, **including enabling the MMU**,
+but execution never reaches `arm_init()`'s C code (its first action clears the
+panel and paints blue, which never happens).
+
+Two candidate causes, both about the last step:
+
+1. the return/jump target is computed wrongly.  start.s does
+   `lr = arm_init_VA + boot_args.virtBase - boot_args.physBase`, and the same
+   arithmetic for the exception/interrupt stacks.  With virtBase = link address
+   and physBase = load address the difference has the wrong sign, so both the
+   target and the stacks are bogus.  An explicit `adrp arm_init; sub x22;
+   add x23; br` replacement did not help, so the register roles need verifying
+   rather than guessing.
+2. the first stack store faults and the exception is taken at EL2 (Gunyah),
+   which is why our EL1 vector table never runs and no register dump appears.
+
+### What is proven working
+
+- Mach-O relocation, device tree handoff, boot_args, entry into `_start`.
+- Bootstrap page tables and the V=P window.
+- The framebuffer must be mapped **inside the kernel's own V=P table**
+  (`0xf8000000`, one 32 MB WA block) or every post-MMU write faults - that was
+  the cause of the earlier "MMU on = dead" behaviour.
+- `fastboot boot` of a 16 MB image works; the shim loads in ~1 s.
+
+### Next
+
+Print `boot_args.virtBase/physBase` and the computed target from inside
+start.s to the panel before the jump, so the last step stops being a guess.
