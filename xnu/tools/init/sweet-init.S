@@ -85,6 +85,9 @@ write_console:
 	ret
 
 hang:
+	mov	x0, #1			/* hongkong: exit so the kernel reports us */
+	mov	x16, #1			/* SYS_exit */
+	svc	#0x80
 	b	hang
 
 	.p2align 3
