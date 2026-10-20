@@ -249,6 +249,8 @@ PEBBLE_TABLE = '#if defined(PEBBLE)\n\t.p2align 11\nLpebble_vectors:\n\t.rept 16
 
 PEBBLE_VEC = '#if defined(PEBBLE)\n\t.p2align 11\nLpebble_vectors:\n\t.rept 16\n\t.align 7\n\tb\tLpebble_crash\n\t.endr\n\nLpebble_crash:\n\tadrp\tx10, Lpebble_frame@PAGE\n\tadd\tx10, x10, Lpebble_frame@PAGEOFF\n\tstp\tx0, x1, [x10, #0]\n\tstp\tx2, x3, [x10, #16]\n\tstp\tx4, x5, [x10, #32]\n\tstp\tx6, x7, [x10, #48]\n\tstp\tx8, x9, [x10, #64]\n\tstp\tx11, x12, [x10, #80]\n\tstp\tx13, x14, [x10, #96]\n\tstp\tx15, x16, [x10, #112]\n\tstp\tx17, x18, [x10, #128]\n\tstp\tx19, x20, [x10, #144]\n\tstp\tx21, x22, [x10, #160]\n\tstp\tx23, x24, [x10, #176]\n\tstp\tx25, x26, [x10, #192]\n\tstp\tx27, x28, [x10, #208]\n\tstp\tx29, x30, [x10, #224]\n\tmrs\tx0, esr_el1\n\tstr\tx0, [x10, #240]\n\tmrs\tx0, elr_el1\n\tstr\tx0, [x10, #248]\n\tmrs\tx0, far_el1\n\tstr\tx0, [x10, #256]\n\tmrs\tx0, spsr_el1\n\tstr\tx0, [x10, #264]\n\tstr\tx10, [x10, #272]\n\t/* stack: top of the frame area */\n\tmov\tx0, #8176\n\tadd\tx0, x10, x0\n\tmov\tsp, x0\n\tmov\tx0, x10\n\tbl\tEXT(pebble_dump)\n1:\twfe\n\tb\t1b\n\n\t.p2align 12\nLpebble_frame:\n\t.space\t8192\n#endif\n'
 
+PEBBLE_STAGE_C = 'void\npebble_stage(unsigned long n)\n{\n\tunsigned int rep;\n\n\tfor (rep = 0; rep < 16; rep++) {\n\t\tpebble_glyph(60 + rep * 40, 300 + (unsigned int)n * 120,\n\t\t    (unsigned int)(n % 16), 8);\n\t}\n}\n\n'
+
 PEBBLE_DUMP_C = '/* pebble: crash dump. Prints ESR/ELR/FAR/SPSR and x0..x30 as hex. */\nstatic const unsigned char pebble_hex[16][7] = {\n\t{0x0E,0x11,0x13,0x15,0x19,0x11,0x0E},\n\t{0x04,0x0C,0x04,0x04,0x04,0x04,0x0E},\n\t{0x0E,0x11,0x01,0x02,0x04,0x08,0x1F},\n\t{0x1F,0x02,0x04,0x02,0x01,0x11,0x0E},\n\t{0x02,0x06,0x0A,0x12,0x1F,0x02,0x02},\n\t{0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E},\n\t{0x06,0x08,0x10,0x1E,0x11,0x11,0x0E},\n\t{0x1F,0x01,0x02,0x04,0x08,0x08,0x08},\n\t{0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E},\n\t{0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C},\n\t{0x0E,0x11,0x11,0x1F,0x11,0x11,0x11},\n\t{0x1E,0x11,0x11,0x1E,0x11,0x11,0x1E},\n\t{0x0E,0x11,0x10,0x10,0x10,0x11,0x0E},\n\t{0x1C,0x12,0x11,0x11,0x11,0x12,0x1C},\n\t{0x1F,0x10,0x10,0x1E,0x10,0x10,0x1F},\n\t{0x1F,0x10,0x10,0x1E,0x10,0x10,0x10}\n};\n\nstatic void\npebble_glyph(unsigned int x, unsigned int y, unsigned int d, unsigned int scale)\n{\n\tvolatile unsigned int *fb = (volatile unsigned int *)0xf8c60000UL;\n\tunsigned int gy, gx, sy, sx;\n\n\tfor (gy = 0; gy < 7; gy++) {\n\t\tfor (gx = 0; gx < 5; gx++) {\n\t\t\tif (!(pebble_hex[d][gy] & (0x10u >> gx))) {\n\t\t\t\tcontinue;\n\t\t\t}\n\t\t\tfor (sy = 0; sy < scale; sy++) {\n\t\t\t\tfor (sx = 0; sx < scale; sx++) {\n\t\t\t\t\tfb[((y + gy * scale + sy) * (4480 / 4)) + x + gx * scale + sx] =\n\t\t\t\t\t    0xffffffffu;\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n}\n\nstatic void\npebble_hex64(unsigned int x, unsigned int y, unsigned long v, unsigned int scale)\n{\n\tfor (unsigned int i = 0; i < 16; i++) {\n\t\tunsigned int d = (unsigned int)((v >> (4 * (15 - i))) & 0xfu);\n\t\tpebble_glyph(x + i * 6 * scale, y, d, scale);\n\t}\n}\n\nvoid\npebble_dump(unsigned long *f)\n{\n\tvolatile unsigned int *fb = (volatile unsigned int *)0xf8c60000UL;\n\tunsigned int y, x;\n\tconst unsigned int scale = 2;\n\tunsigned int row = 0;\n\n\tfor (y = 0; y < 1400; y++) {\n\t\tfor (x = 0; x < 1120; x++) {\n\t\t\tfb[(y * (4480 / 4)) + x] = 0xff000000u;\n\t\t}\n\t}\n\n\tpebble_hex64(200, 40 + row++ * 20, f[30], scale);   /* ESR  */\n\tpebble_hex64(200, 40 + row++ * 20, f[31], scale);   /* ELR  */\n\tpebble_hex64(200, 40 + row++ * 20, f[32], scale);   /* FAR  */\n\tpebble_hex64(200, 40 + row++ * 20, f[33], scale);   /* SPSR */\n\n\trow++;\n\tfor (unsigned int i = 0; i < 15; i++) {\n\t\tpebble_hex64(200, 40 + (row++) * 20, f[i * 2], scale);\n\t}\n\tfor (unsigned int i = 0; i < 16; i++) {\n\t\tpebble_hex64(560, 40 + (11 + i) * 20, f[i * 2 + 1], scale);\n\t}\n}\n'
 
 PEBBLE_VEC_SETUP = '#if defined(PEBBLE)\n\t/* PEBBLE: own vectors so an early exception dumps registers */\n\tadrp\tx0, Lpebble_vectors@PAGE\n\tadd\tx0, x0, Lpebble_vectors@PAGEOFF\n\tmsr\tVBAR_EL1, x0\n\tisb\n#endif\n'
@@ -258,6 +260,8 @@ PEBBLE_STAGE3 = '#if defined(PEBBLE)\n\t/* Stage 3: about to return into arm_ini
 PEBBLE_TPIDR = '#if defined(PEBBLE)\n\tMOV64\tx0, 0xf90bc600\n\tMOV64\tx4, 4480\n\tmov\tx2, #16\nLpebble_tpidr_row:\n\tmov\tx3, #288\n\tmov\tx5, x0\n\tmov\tw1, 0x00ff00ff\nLpebble_tpidr_px:\n\tstr\tw1, [x5], #4\n\tsubs\tx3, x3, #1\n\tb.ne\tLpebble_tpidr_px\n\tadd\tx0, x0, x4\n\tsubs\tx2, x2, #1\n\tb.ne\tLpebble_tpidr_row\n\tdsb\tsy\n#endif\n'
 
 PEBBLE_MIDR = '#if defined(PEBBLE)\n\tMOV64\tx0, 0xf90fd000\n\tMOV64\tx4, 4480\n\tmov\tx2, #16\nLpebble_midr_row:\n\tmov\tx3, #384\n\tmov\tx5, x0\n\tmov\tw1, 0x00ffff00\nLpebble_midr_px:\n\tstr\tw1, [x5], #4\n\tsubs\tx3, x3, #1\n\tb.ne\tLpebble_midr_px\n\tadd\tx0, x0, x4\n\tsubs\tx2, x2, #1\n\tb.ne\tLpebble_midr_row\n\tdsb\tsy\n#endif\n'
+
+PEBBLE_MMU_CALL = '#if defined(PEBBLE)\n\t/* PEBBLE: MMU is on, print a digit through the C console */\n\tmov\tx0, #1\n\tbl\tEXT(pebble_stage)\n#endif\n'
 
 PPL_STUBS = "\n/* ---- PEBBLE_PPL_STUBS ----------------------------------------------------\n * Apple's closed Page Protection Layer supplies these helpers and their\n * declarations.  A Gunyah guest has no PPL, and the open drop never declares\n * them, but pmap.c calls several of them unconditionally.\n */\n#ifndef PEBBLE_PPL_STUBS\n#define PEBBLE_PPL_STUBS\n\n/* The closed uat.h normally supplies pte_t. */\n#ifndef PEBBLE_PTE_T_DEFINED\n#define PEBBLE_PTE_T_DEFINED\ntypedef uint64_t pte_t;\n#endif\n\nstatic inline void *\nptep_get_iommu(pte_t pte)\n{\n\t(void)pte;\n\treturn NULL;\n}\n\nstatic inline void\npmap_ppl_lockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_unlockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_lockdown_page(vm_address_t va, int flags, bool ppl_writable)\n{\n\t(void)va;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic void pmap_phys_write_disable(vm_address_t va);\n\n#endif /* PEBBLE_PPL_STUBS */\n"
 
@@ -528,7 +532,7 @@ def main():
     src = read("osfmk/arm/arm_init.c")
     if src is not None and "pebble_dump" not in src:
         src = src.replace("void arm_init(boot_args * args);",
-                          PEBBLE_DUMP_C + "void arm_init(boot_args * args);", 1)
+                          PEBBLE_STAGE_C + PEBBLE_DUMP_C + "void arm_init(boot_args * args);", 1)
         write("osfmk/arm/arm_init.c", src)
         report.append("PATCHED  osfmk/arm/arm_init.c (crash dump)")
 
@@ -563,6 +567,13 @@ def main():
                           "\tmrs x12, MIDR_EL1\n" + PEBBLE_MIDR, 1)
         write("osfmk/arm64/start.s", src)
         report.append("PATCHED  osfmk/arm64/start.s (tpidr/midr markers)")
+
+    src = read("osfmk/arm64/start.s")
+    if src is not None and "pebble_stage" not in src:
+        src = src.replace("\tMSR_SCTLR_EL1_X0\n\tisb\t\tsy\n",
+                          "\tMSR_SCTLR_EL1_X0\n\tisb\t\tsy\n" + PEBBLE_MMU_CALL, 1)
+        write("osfmk/arm64/start.s", src)
+        report.append("PATCHED  osfmk/arm64/start.s (C call after MMU)")
 
     print("\n".join(report))
     bad = [r for r in report if r.startswith(("NOANCHOR", "MISSING"))]
