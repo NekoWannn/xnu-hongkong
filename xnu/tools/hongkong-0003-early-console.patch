@@ -1,5 +1,5 @@
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index 06bb568..8df7348 100644
+index 06bb568..26117ad 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
 @@ -1426,6 +1426,7 @@ noAuxKC:
@@ -22,12 +22,13 @@ index 06bb568..8df7348 100644
  
  	assert((temp_ptov_table[ptov_index - 1].va + temp_ptov_table[ptov_index - 1].len) <= physmap_end);
  
-@@ -1833,21 +1836,55 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
+@@ -1833,21 +1836,59 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
   */
  #define SWEET_EARLY_FB_VA (VM_MIN_KERNEL_ADDRESS + ARM_TT_L2_SIZE)
  
 -static void
-+vm_offset_t sweet_early_fb_va;        /* chosen alias, for sweet_early_relocate() */
++vm_offset_t sweet_early_fb_va;
++static tt_entry_t *sweet_early_root_tte;        /* chosen alias, for sweet_early_relocate() */
 +
 +#define SWEET_FB_BLOCKS 3u              /* 6 MB covers the whole panel */
 +
@@ -51,7 +52,10 @@ index 06bb568..8df7348 100644
 +	 * three consecutive 2 MB slots (6 MB, the whole panel) and degrade to two
 +	 * or one if the physmap already occupies them.
 +	 */
-+	tt_entry_t *root = (tt_entry_t *)phystokv(cpu_ttep);
++	tt_entry_t *root = sweet_early_root_tte;
++	if (root == NULL) {
++		return 0;
++	}
 +
 +	for (unsigned int need = SWEET_FB_BLOCKS; need >= 1; need--) {
 +		for (unsigned int i = 1; i + need < 256; i++) {
@@ -91,7 +95,7 @@ index 06bb568..8df7348 100644
  }
  #endif
  
-@@ -1867,11 +1904,13 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -1867,11 +1908,13 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  	/*
  	 * Get the virtual and physical kernel-managed memory base from boot_args.
  	 */
@@ -105,15 +109,16 @@ index 06bb568..8df7348 100644
  	real_phys_size = args->memSize;
  #endif
  	/*
-@@ -1991,6 +2030,7 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -1991,6 +2034,8 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  	 * Initialize l1 page table page
  	 */
  	cpu_tte = (tt_entry_t *)alloc_ptpage(TRUE);
 +	sweet_early_mark(13, "before table rebuild");
++	sweet_early_root_tte = cpu_tte;   /* still a VA here */
  	cpu_ttep = kvtophys((vm_offset_t)cpu_tte);
  	bzero(cpu_tte, ARM_PGBYTES);
  	avail_end = gPhysBase + mem_size;
-@@ -2177,20 +2217,34 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2177,20 +2222,34 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  	mt_early_init();
  #endif /* MONOTONIC */
  
