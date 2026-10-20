@@ -317,10 +317,21 @@ index d7a25f2..5eb1cd9 100644
  void sweet_early_relocate(uint64_t base);
  void sweet_early_disable(void);
 diff --git a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
-index 19f27cd..11da5dc 100644
+index 19f27cd..b0a1b83 100644
 --- a/pexpert/arm/pe_serial.c
 +++ b/pexpert/arm/pe_serial.c
-@@ -835,7 +835,8 @@ fbcon_probe(void)
+@@ -746,7 +746,9 @@ fbcon_init(void)
+ {
+ 	fbcon_cols = fbcon_width / (8 * FBCON_SCALE);
+ 	fbcon_rows = fbcon_height / (16 * FBCON_SCALE);
+-	fbcon_col = fbcon_row = 0;
++	/* hongkong: rows above ~300 are not visible on this panel */
++	fbcon_col = 0;
++	fbcon_row = 24;
+ 	for (uint32_t r = 0; r < fbcon_rows; r++) {
+ 		fbcon_clear_row(r);
+ 	}
+@@ -835,7 +837,8 @@ fbcon_probe(void)
  		return;
  	}
  	sweet_early_mark(17, "fbcon config read; mapping");
