@@ -1,33 +1,20 @@
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index 06bb568..fc1186a 100644
+index 06bb568..b6b4031 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
-@@ -1842,11 +1842,19 @@ sweet_early_map_final(void)
+@@ -1842,6 +1842,11 @@ sweet_early_map_final(void)
  	assert((l1 & (ARM_TTE_VALID | ARM_TTE_TYPE_MASK)) == (ARM_TTE_VALID | ARM_TTE_TYPE_TABLE));
  	tt_entry_t *l2 = (tt_entry_t *)phystokv(l1 & ARM_TTE_TABLE_MASK);
  	tt_entry_t *slot = &l2[(va & ARM_TT_L2_INDEX_MASK) >> ARM_TT_L2_SHIFT];
--	assert(*slot == ARM_TTE_EMPTY);
--	*slot = 0x9c000000ULL | ARM_TTE_VALID | ARM_TTE_TYPE_BLOCK |
--	    ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) |
--	    ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_WRITECOMB) |
--	    ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX;
 +
 +	/*
 +	 * PEBBLE: the panel is 1120 x 4480 bytes = 4.9 MB, i.e. three 2 MB
 +	 * blocks, and it starts 0x60000 into the first 2 MB aligned window.
 +	 */
-+	for (unsigned int i = 0; i < 3; i++) {
-+		assert(slot[i] == ARM_TTE_EMPTY);
-+		slot[i] = (0x9c000000ULL + (uint64_t)i * ARM_TT_L2_SIZE) |
-+		    ARM_TTE_VALID | ARM_TTE_TYPE_BLOCK |
-+		    ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) |
-+		    ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_WRITECOMB) |
-+		    ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX;
-+	}
- 	__asm__ volatile("dsb ishst" ::: "memory");
- }
- #endif
-@@ -2190,7 +2198,7 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+ 	assert(*slot == ARM_TTE_EMPTY);
+ 	*slot = 0x9c000000ULL | ARM_TTE_VALID | ARM_TTE_TYPE_BLOCK |
+ 	    ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) |
+@@ -2190,7 +2195,7 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  
  #if defined(SWEET)
  	/* The final TTBR1 is live; leave the outgoing VA=PA framebuffer alias. */
@@ -63,7 +50,7 @@ index 023086f..85a2517 100644
  	orr		x11, x11, x10
  	and		x12, x10, #(ARM_TT_L2_INDEX_MASK)
 diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
-index 6928957..dc7ae38 100644
+index 6928957..4b61744 100644
 --- a/osfmk/arm64/sweet_early.c
 +++ b/osfmk/arm64/sweet_early.c
 @@ -11,16 +11,18 @@
@@ -86,7 +73,7 @@ index 6928957..dc7ae38 100644
  #define EARLY_CELL_H (16u * EARLY_SCALE)
 -#define EARLY_ROWS ((EARLY_HEIGHT - 32u) / EARLY_CELL_H)
 -#define EARLY_COLS (EARLY_WIDTH / EARLY_CELL_W)
-+#define EARLY_ROWS ((EARLY_HEIGHT - EARLY_MARGIN_Y - 32u) / EARLY_CELL_H)
++#define EARLY_ROWS 8u   /* 2 MB block: 380 rows minus margin */
 +#define EARLY_COLS ((EARLY_WIDTH - 2u * EARLY_MARGIN_X) / EARLY_CELL_W)
  
  extern unsigned char iso_font[256 * 16];
