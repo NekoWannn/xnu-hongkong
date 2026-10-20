@@ -194,7 +194,7 @@ index 023086f..85a2517 100644
  	orr		x11, x11, x10
  	and		x12, x10, #(ARM_TT_L2_INDEX_MASK)
 diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
-index 6928957..fca5546 100644
+index 6928957..a070aba 100644
 --- a/osfmk/arm64/sweet_early.c
 +++ b/osfmk/arm64/sweet_early.c
 @@ -11,16 +11,18 @@
@@ -253,7 +253,7 @@ index 6928957..fca5546 100644
  	sweet_early_putc('\n');
  }
  
-+static void
++void
 +sweet_early_hex64(uint64_t v)
 +{
 +	sweet_early_string("0x");
@@ -294,3 +294,15 @@ index 6928957..fca5546 100644
  	__asm__ volatile("dsb sy" ::: "memory");
  }
  
+diff --git a/osfmk/arm64/sweet_early.h b/osfmk/arm64/sweet_early.h
+index d7a25f2..5eb1cd9 100644
+--- a/osfmk/arm64/sweet_early.h
++++ b/osfmk/arm64/sweet_early.h
+@@ -9,6 +9,7 @@
+ #if defined(SWEET)
+ void sweet_early_mark(unsigned int stage, const char *label);
+ void sweet_early_putc(char c);
++void sweet_early_hex64(uint64_t v);
+ void sweet_early_panic(const char *fmt, va_list *args);
+ void sweet_early_relocate(uint64_t base);
+ void sweet_early_disable(void);
