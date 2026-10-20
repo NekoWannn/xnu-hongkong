@@ -1,5 +1,5 @@
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index 06bb568..8aa0b26 100644
+index 06bb568..7a28818 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
 @@ -1833,21 +1833,55 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
@@ -71,8 +71,33 @@ index 06bb568..8aa0b26 100644
  }
  #endif
  
-@@ -2179,18 +2213,31 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -1867,11 +1901,13 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+ 	/*
+ 	 * Get the virtual and physical kernel-managed memory base from boot_args.
+ 	 */
++	sweet_early_mark(11, "arm_vm_init entered");
+ 	gVirtBase = args->virtBase;
+ 	gPhysBase = args->physBase;
+ #if KASAN
+ 	real_phys_size = args->memSize + (shadow_ptop - shadow_pbase);
+ #else
++	sweet_early_mark(12, "mem size read");
+ 	real_phys_size = args->memSize;
+ #endif
+ 	/*
+@@ -1991,6 +2027,7 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+ 	 * Initialize l1 page table page
+ 	 */
+ 	cpu_tte = (tt_entry_t *)alloc_ptpage(TRUE);
++	sweet_early_mark(13, "before table rebuild");
+ 	cpu_ttep = kvtophys((vm_offset_t)cpu_tte);
+ 	bzero(cpu_tte, ARM_PGBYTES);
+ 	avail_end = gPhysBase + mem_size;
+@@ -2177,20 +2214,34 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+ 	mt_early_init();
+ #endif /* MONOTONIC */
  
++	sweet_early_mark(14, "before physmap init");
  	arm_set_user_tbi();
  
 +	arm_vm_physmap_init(args);
