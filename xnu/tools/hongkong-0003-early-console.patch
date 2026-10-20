@@ -1,5 +1,5 @@
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index 06bb568..681c223 100644
+index 06bb568..a7acfa7 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
 @@ -1426,6 +1426,7 @@ noAuxKC:
@@ -134,7 +134,7 @@ index 06bb568..681c223 100644
  	cpu_ttep = kvtophys((vm_offset_t)cpu_tte);
  	bzero(cpu_tte, ARM_PGBYTES);
  	avail_end = gPhysBase + mem_size;
-@@ -2177,20 +2238,34 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2177,22 +2238,37 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  	mt_early_init();
  #endif /* MONOTONIC */
  
@@ -150,7 +150,7 @@ index 06bb568..681c223 100644
 +	 * switched: phystokv() still resolves through the bootstrap aperture
 +	 * here, and the entry is already in the table we are about to load.
 +	 */
-+	sweet_early_fb_va = sweet_early_map_final();
++	sweet_early_fb_va = 0;   /* debug: keep the physical console */
 +	if (sweet_early_fb_va != 0) {
 +		sweet_early_mark(19, "fb alias mapped");
 +	} else {
@@ -169,10 +169,14 @@ index 06bb568..681c223 100644
  #if defined(SWEET)
  	/* The final TTBR1 is live; leave the outgoing VA=PA framebuffer alias. */
 -	sweet_early_relocate(SWEET_EARLY_FB_VA);
-+	sweet_early_relocate(sweet_early_fb_va + 0x60000);
++	/* debug: console stays on the physical framebuffer */
++	sweet_early_mark(9, "phys console kept");
  #endif
- 	set_mmu_ttb(invalid_ttep & TTBR_BADDR_MASK);
+-	set_mmu_ttb(invalid_ttep & TTBR_BADDR_MASK);
++	/* debug: TTBR0 kept so the physical console keeps working */
  
+ 	flush_mmu_tlb();
+ 	sweet_early_mark(10, "TTBR0 off; TLB flushed");
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 index 023086f..85a2517 100644
 --- a/osfmk/arm64/start.s
