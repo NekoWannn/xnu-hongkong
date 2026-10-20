@@ -371,7 +371,7 @@ index 023086f..85a2517 100644
  	orr		x11, x11, x10
  	and		x12, x10, #(ARM_TT_L2_INDEX_MASK)
 diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
-index 6928957..9cc451e 100644
+index 6928957..89ec7eb 100644
 --- a/osfmk/arm64/sweet_early.c
 +++ b/osfmk/arm64/sweet_early.c
 @@ -11,16 +11,18 @@
@@ -388,7 +388,7 @@ index 6928957..9cc451e 100644
 +#define EARLY_HEIGHT 2436u
 +#define EARLY_STRIDE (4480u / 4)
 +#define EARLY_MARGIN_X 40u
-+#define EARLY_MARGIN_Y 400u
++#define EARLY_MARGIN_Y 500u
  #define EARLY_SCALE 2u
  #define EARLY_CELL_W (8u * EARLY_SCALE)
  #define EARLY_CELL_H (16u * EARLY_SCALE)
@@ -507,17 +507,18 @@ index c86b9e7..9f2fa3f 100644
  	sweet_log_append(c, size);
  	if (sweet_console_muted && !panic_active()) {
 diff --git a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
-index 19f27cd..29d1364 100644
+index 19f27cd..bc76000 100644
 --- a/pexpert/arm/pe_serial.c
 +++ b/pexpert/arm/pe_serial.c
-@@ -746,7 +746,9 @@ fbcon_init(void)
+@@ -746,7 +746,10 @@ fbcon_init(void)
  {
  	fbcon_cols = fbcon_width / (8 * FBCON_SCALE);
  	fbcon_rows = fbcon_height / (16 * FBCON_SCALE);
 -	fbcon_col = fbcon_row = 0;
-+	/* hongkong: rows above ~300 are not visible on this panel */
++	/* hongkong: keep kprintf clear of both the top band and the early
++	 * console, which starts at y=500 px, so the two never overwrite. */
 +	fbcon_col = 0;
-+	fbcon_row = 24;
++	fbcon_row = 28;
  	for (uint32_t r = 0; r < fbcon_rows; r++) {
  		fbcon_clear_row(r);
  	}
