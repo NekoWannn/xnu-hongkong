@@ -76,7 +76,7 @@ index 023086f..85a2517 100644
  	orr		x11, x11, x10
  	and		x12, x10, #(ARM_TT_L2_INDEX_MASK)
 diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
-index 6928957..f3464a1 100644
+index 6928957..b398d6c 100644
 --- a/osfmk/arm64/sweet_early.c
 +++ b/osfmk/arm64/sweet_early.c
 @@ -11,16 +11,18 @@
@@ -93,7 +93,7 @@ index 6928957..f3464a1 100644
 +#define EARLY_HEIGHT 2436u
 +#define EARLY_STRIDE (4480u / 4)
 +#define EARLY_MARGIN_X 40u
-+#define EARLY_MARGIN_Y 80u
++#define EARLY_MARGIN_Y 400u
  #define EARLY_SCALE 2u
  #define EARLY_CELL_W (8u * EARLY_SCALE)
  #define EARLY_CELL_H (16u * EARLY_SCALE)
