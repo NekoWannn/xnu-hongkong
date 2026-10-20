@@ -58,6 +58,26 @@ index 68612db..61591f7 100644
  }
  
  static const char * init_programs[] = {
+diff --git a/bsd/kern/mach_loader.c b/bsd/kern/mach_loader.c
+index 1756185..c76db17 100644
+--- a/bsd/kern/mach_loader.c
++++ b/bsd/kern/mach_loader.c
+@@ -777,6 +777,7 @@ parse_machfile(
+ 	struct dylinker_command *dlp = 0;
+ 	void *                  control;
+ 	load_return_t           ret = LOAD_SUCCESS;
++	printf("SWEET: parse_machfile enter\n");
+ 	void *                  addr;
+ 	vm_size_t               alloc_size, cmds_size;
+ 	size_t                  offset;
+@@ -1850,6 +1851,7 @@ map_segment(
+ 	if (vm_end == vm_start ||
+ 	    file_end == file_start) {
+ 		/* nothing to map... */
++		printf("SWEET: parse_machfile done\n");
+ 		return LOAD_SUCCESS;
+ 	}
+ 
 diff --git a/iokit/Kernel/arm/SweetCPU.cpp b/iokit/Kernel/arm/SweetCPU.cpp
 index 2545cf9..820de8a 100644
 --- a/iokit/Kernel/arm/SweetCPU.cpp
