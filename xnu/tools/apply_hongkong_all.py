@@ -97,6 +97,7 @@ def install_sweet_patches():
     # them with that value and let them place the trees the patches refer to.
     env = dict(os.environ)
     env["MACHINE_CONFIG"] = "SWEET"
+    env.setdefault("MACOS_VERSION", "13.5")
     for name, path in stages:
         os.chmod(path, 0o755)
         try:
