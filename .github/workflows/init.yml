@@ -1,0 +1,23 @@
+name: build-init
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "xnu/tools/init/**"
+      - ".github/workflows/init.yml"
+jobs:
+  init:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble sweet-init
+        run: |
+          set -euo pipefail
+          cd xnu/tools/init
+          clang -target arm64-apple-ios16.0 -c sweet-init.S -o init.o
+          python3 mkinit.py init.o sweet-init.bin
+          ls -l sweet-init.bin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sweet-init
+          path: xnu/tools/init/sweet-init.bin
