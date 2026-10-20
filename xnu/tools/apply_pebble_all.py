@@ -243,6 +243,10 @@ PEBBLE_STAGE1 = '\n#if defined(PEBBLE)\n\t/* Stage 1: the MMU is on now; a red b
 
 PEBBLE_STAGE2 = '#if defined(PEBBLE)\n\t/* Stage 2: reached only after SCTLR_EL1 enables the MMU, so a green band\n\t * proves the V=P framebuffer block mapping is live. */\n\tMOV64\tx0, 0xf8dd3e00\n\tMOV64\tx4, 4480\n\tmov\tx2, #8\nLpebble_va_row:\n\tmov\tx3, #96\n\tmov\tx5, x0\n\tmov\tw1, #0x0000ff00\nLpebble_va_pixel:\n\tstr\tw1, [x5], #4\n\tsubs\tx3, x3, #1\n\tb.ne\tLpebble_va_pixel\n\tadd\tx0, x0, x4\n\tsubs\tx2, x2, #1\n\tb.ne\tLpebble_va_row\n\tdsb\tsy\n#endif\n'
 
+PEBBLE_VEC = '#if defined(PEBBLE)\n\t/* PEBBLE: own vector table so an early exception shows up as a magenta\n\t * band instead of a silent Gunyah reset. */\n\tadrp\tx0, Lpebble_vectors\n\tadd\tx0, x0, :lo12:Lpebble_vectors\n\tmsr\tVBAR_EL1, x0\n\tisb\n#endif\n'
+
+PEBBLE_TABLE = '#if defined(PEBBLE)\n\t.p2align 11\nLpebble_vectors:\n\t.rept 16\n\t.align 7\n\tb\tLpebble_crash\n\t.endr\nLpebble_crash:\n\tMOV64\tx0, 0xf8fcb000\n\tMOV64\tx4, 4480\n\tmov\tx2, #16\nLpebble_crash_row:\n\tmov\tx3, #200\n\tmov\tx5, x0\n\tmov\tw1, #0x00ff00ff\nLpebble_crash_px:\n\tstr\tw1, [x5], #4\n\tsubs\tx3, x3, #1\n\tb.ne\tLpebble_crash_px\n\tadd\tx0, x0, x4\n\tsubs\tx2, x2, #1\n\tb.ne\tLpebble_crash_row\n\tdsb\tsy\n1:\twfe\n\tb\t1b\n#endif\n'
+
 PPL_STUBS = "\n/* ---- PEBBLE_PPL_STUBS ----------------------------------------------------\n * Apple's closed Page Protection Layer supplies these helpers and their\n * declarations.  A Gunyah guest has no PPL, and the open drop never declares\n * them, but pmap.c calls several of them unconditionally.\n */\n#ifndef PEBBLE_PPL_STUBS\n#define PEBBLE_PPL_STUBS\n\n/* The closed uat.h normally supplies pte_t. */\n#ifndef PEBBLE_PTE_T_DEFINED\n#define PEBBLE_PTE_T_DEFINED\ntypedef uint64_t pte_t;\n#endif\n\nstatic inline void *\nptep_get_iommu(pte_t pte)\n{\n\t(void)pte;\n\treturn NULL;\n}\n\nstatic inline void\npmap_ppl_lockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_unlockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_lockdown_page(vm_address_t va, int flags, bool ppl_writable)\n{\n\t(void)va;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic void pmap_phys_write_disable(vm_address_t va);\n\n#endif /* PEBBLE_PPL_STUBS */\n"
 
 
@@ -501,6 +505,15 @@ def main():
                           "#if HAS_CLUSTER && !defined(PEBBLE)\n", 1)
         write("osfmk/arm64/start.s", src)
         report.append("PATCHED  osfmk/arm64/start.s (skip tunables, no CPU_OVRD)")
+
+    src = read("osfmk/arm64/start.s")
+    if src is not None and "Lpebble_crash" not in src:
+        src = src.replace("\tMOV64   x0, SCTLR_EL1_DEFAULT\n",
+                          PEBBLE_VEC + "\tMOV64   x0, SCTLR_EL1_DEFAULT\n", 1)
+        src = src.replace("\t/* Ensure TTEs are visible */",
+                          PEBBLE_TABLE + "\t/* Ensure TTEs are visible */", 1)
+        write("osfmk/arm64/start.s", src)
+        report.append("PATCHED  osfmk/arm64/start.s (crash vectors)")
 
     print("\n".join(report))
     bad = [r for r in report if r.startswith(("NOANCHOR", "MISSING"))]
