@@ -20,7 +20,7 @@ index 2545cf9..820de8a 100644
  			IOSleep(1);
  		}
 diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
-index 42362c5..508e1fb 100644
+index 42362c5..a8e7f61 100644
 --- a/osfmk/arm/arm_init.c
 +++ b/osfmk/arm/arm_init.c
 @@ -460,7 +460,9 @@ arm_init(
@@ -33,7 +33,7 @@ index 42362c5..508e1fb 100644
  
  	kernel_debug_string_early("kernel_startup_bootstrap");
  	kernel_startup_bootstrap();
-@@ -542,8 +544,9 @@ arm_init(
+@@ -542,10 +544,12 @@ arm_init(
  	kernel_startup_initialize_upto(STARTUP_SUB_KPRINTF);
  	kprintf("kprintf initialized\n");
  	sweet_early_mark(20, "kprintf startup complete");
@@ -43,7 +43,20 @@ index 42362c5..508e1fb 100644
 +		/* debug: early console kept enabled */
  	}
  
++	sweet_early_mark(27, "before serial boot-arg handling");
  	serialmode = 0;
+ 	if (PE_parse_boot_argn("serial", &serialmode, sizeof(serialmode))) {
+ 		/* Do we want a serial keyboard and/or console? */
+@@ -663,7 +667,9 @@ arm_init(
+ 	 * against string vulnerabilities
+ 	 */
+ 	__stack_chk_guard &= ~(0xFFULL << 8);
++	sweet_early_mark(25, "calling machine_startup");
+ 	machine_startup(args);
++	sweet_early_mark(26, "machine_startup returned");
+ }
+ 
+ /*
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
 index 06bb568..a7acfa7 100644
 --- a/osfmk/arm64/arm_vm_init.c
