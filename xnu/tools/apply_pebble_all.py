@@ -512,6 +512,8 @@ PEBBLE_STAGE3 = '#if defined(PEBBLE)\n\t/* Stage 3: about to return into arm_ini
 
 
 
+PEBBLE_MIDR_BAND = '#if defined(PEBBLE)\n\t/* stage 2b: past MIDR_EL1 */\n\tMOV64\tx0, 0xf90a8600\n\tMOV64\tx4, 4480\n\tmov\tx2, #16\nLpb2b_row:\n\tmov\tx3, #96\n\tmov\tx5, x0\nLpb2b_px:\n\tmov\tw1, #0x00ffff00\n\tstr\tw1, [x5], #4\n\tsubs\tx3, x3, #1\n\tb.ne\tLpb2b_px\n\tadd\tx0, x0, x4\n\tsubs\tx2, x2, #1\n\tb.ne\tLpb2b_row\n\tdsb\tsy\n#endif\n'
+
 PPL_STUBS = "\n/* ---- PEBBLE_PPL_STUBS ----------------------------------------------------\n * Apple's closed Page Protection Layer supplies these helpers and their\n * declarations.  A Gunyah guest has no PPL, and the open drop never declares\n * them, but pmap.c calls several of them unconditionally.\n */\n#ifndef PEBBLE_PPL_STUBS\n#define PEBBLE_PPL_STUBS\n\n/* The closed uat.h normally supplies pte_t. */\n#ifndef PEBBLE_PTE_T_DEFINED\n#define PEBBLE_PTE_T_DEFINED\ntypedef uint64_t pte_t;\n#endif\n\nstatic inline void *\nptep_get_iommu(pte_t pte)\n{\n\t(void)pte;\n\treturn NULL;\n}\n\nstatic inline void\npmap_ppl_lockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_unlockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_lockdown_page(vm_address_t va, int flags, bool ppl_writable)\n{\n\t(void)va;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic void pmap_phys_write_disable(vm_address_t va);\n\n#endif /* PEBBLE_PPL_STUBS */\n"
 
 
@@ -1109,6 +1111,17 @@ def main():
         "\tmsr\t\tTPIDR_EL1, xzr",
         "\t/* PEBBLE: TPIDR skipped */",
         "skip TPIDR")
+
+    # 25. marker right after the MIDR_EL1 read
+    src = read("osfmk/arm64/start.s")
+    if src is not None and "Lpb2b_row" not in src:
+        a = "\tmrs x12, MIDR_EL1\n"
+        if a in src:
+            src = src.replace(a, a + PEBBLE_MIDR_BAND, 1)
+            write("osfmk/arm64/start.s", src)
+            report.append("PATCHED  osfmk/arm64/start.s (post-MIDR band)")
+        else:
+            report.append("NOANCHOR post-MIDR band")
 
     print("\n".join(report))
 
