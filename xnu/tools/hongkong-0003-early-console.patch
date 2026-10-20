@@ -1,8 +1,16 @@
 diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
-index 68612db..61591f7 100644
+index 68612db..8e4a9ba 100644
 --- a/bsd/kern/kern_exec.c
 +++ b/bsd/kern/kern_exec.c
-@@ -1197,6 +1197,8 @@ exec_mach_imgact(struct image_params *imgp)
+@@ -767,6 +767,7 @@ exec_fat_imgact(struct image_params *imgp)
+ 	/* imgp->ip_vdata has PAGE_SIZE, zerofilled if the file is smaller */
+ 	lret = fatfile_validate_fatarches((vm_offset_t)fat_header, PAGE_SIZE,
+ 	    (off_t)imgp->ip_vattr->va_data_size);
++	printf("SWEET: machfile loaded, committing\n");
+ 	if (lret != LOAD_SUCCESS) {
+ 		error = load_return_to_errno(lret);
+ 		goto bad;
+@@ -1197,6 +1198,8 @@ exec_mach_imgact(struct image_params *imgp)
  		goto bad;
  	}
  
@@ -11,7 +19,7 @@ index 68612db..61591f7 100644
  	if (mach_header->filetype != MH_EXECUTE) {
  		error = -1;
  		goto bad;
-@@ -1314,7 +1316,9 @@ grade:
+@@ -1314,7 +1317,9 @@ grade:
  	/*
  	 * Actually load the image file we previously decided to load.
  	 */
@@ -21,7 +29,15 @@ index 68612db..61591f7 100644
  	if (lret != LOAD_SUCCESS) {
  		error = load_return_to_errno(lret);
  
-@@ -2176,6 +2180,7 @@ again:
+@@ -1367,6 +1372,7 @@ grade:
+ 	p->p_cpusubtype = imgp->ip_origcpusubtype;
+ 	proc_setplatformdata(p, load_result.ip_platform, load_result.lr_min_sdk, load_result.lr_sdk);
+ 	exec_setup_tpro(imgp, &load_result);
++	printf("SWEET: tpro set\n");
+ 
+ 	vm_map_set_size_limit(map, proc_limitgetcur(p, RLIMIT_AS));
+ 	vm_map_set_data_limit(map, proc_limitgetcur(p, RLIMIT_DATA));
+@@ -2176,6 +2182,7 @@ again:
  	}
  	imgp->ip_ndp = ndp;     /* successful namei(); call nameidone() later */
  	imgp->ip_vp = ndp->ni_vp;       /* if set, need to vnode_put() at some point */
@@ -29,7 +45,7 @@ index 68612db..61591f7 100644
  
  	/*
  	 * Before we start the transition from binary A to binary B, make
-@@ -2197,6 +2202,7 @@ again:
+@@ -2197,6 +2204,7 @@ again:
  	}
  
  	error = exec_check_permissions(imgp);
@@ -37,7 +53,7 @@ index 68612db..61591f7 100644
  	if (error) {
  		goto bad;
  	}
-@@ -6763,6 +6769,8 @@ load_init_program_at_path(proc_t p, user_addr_t scratch_addr, const char* path)
+@@ -6763,6 +6771,8 @@ load_init_program_at_path(proc_t p, user_addr_t scratch_addr, const char* path)
  	assert(scratch_addr);
  	assert(path);
  
@@ -46,7 +62,7 @@ index 68612db..61591f7 100644
  	/*
  	 * Copy out program name.
  	 */
-@@ -6828,7 +6836,10 @@ load_init_program_at_path(proc_t p, user_addr_t scratch_addr, const char* path)
+@@ -6828,7 +6838,10 @@ load_init_program_at_path(proc_t p, user_addr_t scratch_addr, const char* path)
  	 */
  	set_security_token(p);
  
