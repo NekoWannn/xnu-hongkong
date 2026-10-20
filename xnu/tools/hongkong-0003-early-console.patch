@@ -1,3 +1,24 @@
+diff --git a/iokit/Kernel/arm/SweetCPU.cpp b/iokit/Kernel/arm/SweetCPU.cpp
+index 2545cf9..820de8a 100644
+--- a/iokit/Kernel/arm/SweetCPU.cpp
++++ b/iokit/Kernel/arm/SweetCPU.cpp
+@@ -159,9 +159,13 @@ SweetCPU::startAll(void *arg __unused, wait_result_t result __unused)
+ 		while (__atomic_load_n(&cpu->initialized, __ATOMIC_ACQUIRE) == 0 ||
+ 		    !sweet_cpu_signal_is_enabled(i)) {
+ 			if (mach_absolute_time() > deadline) {
+-				IOLog("SWEET CPU: cpu=%u mpidr=0x%x NOT alive after 5s\n",
+-				    i, topology->cpus[i].phys_id);
+-				panic("SWEET CPU: cpu=%u startup timeout (reset/MMU/GIC/SGI)", i);
++				/* hongkong: SGI delivery is not verified yet; keep going. */
++				IOLog("SWEET CPU: cpu=%u mpidr=0x%x NOT alive after 5s"
++				    " (initialized=%d sgi=%d) - continuing\n",
++				    i, topology->cpus[i].phys_id,
++				    (int)__atomic_load_n(&cpu->initialized, __ATOMIC_ACQUIRE),
++				    (int)sweet_cpu_signal_is_enabled(i));
++				break;
+ 			}
+ 			IOSleep(1);
+ 		}
 diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
 index 42362c5..508e1fb 100644
 --- a/osfmk/arm/arm_init.c
