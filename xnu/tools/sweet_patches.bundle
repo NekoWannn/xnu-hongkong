@@ -34997,3 +34997,171 @@ diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
  	case SIOCSIFADDR:
  	case SIOCAIFADDR:
  		ifnet_set_flags(ifp, IFF_UP, IFF_UP);
+### STAGE 0019-stage-libpthread.sh
+#!/bin/bash
+# dxb runs patches/*.sh from the XNU source root before applying *.patch.
+set -euo pipefail
+
+[[ "${MACHINE_CONFIG:-}" == SWEET ]] || exit 0
+[[ "${MACOS_VERSION:-}" == 13.5 ]] || {
+    echo 'SWEET libpthread integration requires xnu-8796.141.3 (macOS 13.5)' >&2
+    exit 1
+}
+[[ -f bsd/pthread/pthread_shims.c ]] || exit 1
+
+# libpthread-514.100.2 is paired with xnu-8796.141.3 in Apple's macos-135
+# release.json. Fetch the immutable commit, never a moving branch/tag.
+pthread_sha=a6c70ca0e544347a0377babf748f831577ec24f9
+pthread_tmp=$(mktemp -d)
+trap 'rm -rf "$pthread_tmp"' EXIT
+git init -q "$pthread_tmp"
+git -C "$pthread_tmp" fetch -q --depth 1 \
+    https://github.com/apple-oss-distributions/libpthread "$pthread_sha"
+git -C "$pthread_tmp" checkout -q FETCH_HEAD
+[[ "$(git -C "$pthread_tmp" rev-parse HEAD)" == "$pthread_sha" ]]
+
+python3 - "$pthread_tmp" <<'PY'
+from pathlib import Path
+import shutil
+import sys
+
+source = Path(sys.argv[1])
+target = Path('bsd/pthread/sweet_libpthread')
+if target.exists():
+    raise SystemExit(f'refusing to overwrite existing provider: {target}')
+# Preserve upstream copyright/license headers; no downloaded sources in git.
+for directory in ('kern', 'private', 'include'):
+    shutil.copytree(source / directory, target / directory)
+
+def replace(file, old, new, count):
+    path = target / 'kern' / file
+    text = path.read_text()
+    if text.count(old) != count:
+        raise SystemExit(f'libpthread source changed: {file}: {old!r}')
+    path.write_text(text.replace(old, new))
+
+# The public kernel source has stricter address types than the kext SDK.
+# Keep the address bits intact with explicit casts; user addresses use zero.
+replace('kern_trace.h', 'vm_kernel_unslide_or_perm_external(ptr,',
+        'vm_kernel_unslide_or_perm_external((vm_offset_t)ptr,', 1)
+for callback, count in (('psynch_wait_update_owner', 4),
+                        ('psynch_wait_complete', 1), ('psynch_wait_wakeup', 2)):
+    replace('kern_synch.c', f'pthread_kern->{callback}(kwq,',
+            f'pthread_kern->{callback}((uintptr_t)kwq,', count)
+replace('kern_support.c', '*kevent_list_out = NULL;', '*kevent_list_out = 0;', 1)
+replace('kern_support.c', 'user_addr_t kevent_list = NULL;',
+        'user_addr_t kevent_list = 0;', 2)
+replace('kern_support.c', 'workq_kevent(p, &th_addrs, NULL,',
+        'workq_kevent(p, &th_addrs, 0,', 1)
+replace('kern_support.c',
+        'panic(__func__ ": thread_set_wq_state failed: %d", error);',
+        'panic("%s: thread_set_wq_state failed: %d", __func__, error);', 4)
+PY
+
+# Kernel builds use -nostdinc. Carry the real SDK target definitions beside
+# the provider so local compiles from the uploaded build tree work as well.
+pthread_sdk=$(xcrun --sdk macosx --show-sdk-path)
+cp "$pthread_sdk/usr/include/TargetConditionals.h" bsd/pthread/sweet_libpthread/
+echo "Staged libpthread-514.100.2 ($pthread_sha) for SWEET"
+### STAGE 0020-stage-bearssl.sh
+#!/bin/bash
+# Pinned, portable constant-time AES for the SWEET legacy CBC/ECB API.
+set -euo pipefail
+[[ "${MACHINE_CONFIG:-}" == SWEET ]] || exit 0
+[[ -f libkern/crypto/corecrypto_aes.c ]] || exit 1
+bearssl_sha=7bea48e5e850ab4cafbe68d3765cdaba13a86d6f
+bearssl_tmp=$(mktemp -d)
+trap 'rm -rf "$bearssl_tmp"' EXIT
+git init -q "$bearssl_tmp"
+git -C "$bearssl_tmp" fetch -q --depth 1 \
+    https://www.bearssl.org/git/BearSSL "$bearssl_sha"
+git -C "$bearssl_tmp" checkout -q FETCH_HEAD
+[[ "$(git -C "$bearssl_tmp" rev-parse HEAD)" == "$bearssl_sha" ]]
+python3 - "$bearssl_tmp" <<'PY'
+from pathlib import Path
+import shutil
+import sys
+
+source = Path(sys.argv[1])
+target = Path('libkern/crypto/sweet_bearssl')
+if target.exists():
+    raise SystemExit(f'refusing to overwrite existing AES source: {target}')
+shutil.copytree(source / 'inc', target / 'inc')
+(target / 'src/symcipher').mkdir(parents=True)
+for file in ('inner.h', 'config.h'):
+    shutil.copy2(source / 'src' / file, target / 'src' / file)
+# XNU exports machine/limits.h instead of the userspace limits.h.
+header = target / 'src/inner.h'
+text = header.read_text()
+assert text.count('#include <limits.h>') == 1
+header.write_text(text.replace('#include <limits.h>',
+    '#if defined(KERNEL)\n#include <machine/limits.h>\n'
+    '#else\n#include <limits.h>\n#endif'))
+for name in ('aes_ct', 'aes_ct_enc', 'aes_ct_dec', 'aes_ct_cbcenc', 'aes_ct_cbcdec'):
+    shutil.copy2(source / 'src/symcipher' / (name + '.c'),
+                 target / 'src/symcipher' / (name + '.c'))
+# MD5, SHA-1 and SHA-384/512 for the legacy hash APIs, with their codecs.
+for name in ('hash/md5.c', 'codec/dec32le.c', 'codec/enc32le.c',
+             'hash/sha1.c', 'codec/dec32be.c', 'codec/enc32be.c',
+             'hash/sha2big.c', 'codec/dec64be.c', 'codec/enc64be.c'):
+    (target / 'src' / name).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source / 'src' / name, target / 'src' / name)
+shutil.copy2(source / 'LICENSE.txt', target / 'LICENSE.txt')
+PY
+echo "Staged BearSSL portable AES, MD5, SHA-1 and SHA-384/512 ($bearssl_sha) for SWEET"
+### STAGE 0026-stage-hfs.sh
+#!/bin/bash
+# Stage Apple's open source HFS for the SWEET built-in filesystem (bsd/sweet_hfs).
+# dxb runs patches/*.sh from the XNU source root before applying *.patch.
+set -euo pipefail
+
+[[ "${MACHINE_CONFIG:-}" == SWEET ]] || exit 0
+[[ "${MACOS_VERSION:-}" == 13.5 ]] || {
+    echo 'SWEET HFS integration requires xnu-8796.141.3 (macOS 13.5)' >&2
+    exit 1
+}
+[[ -f bsd/kern/bsd_init.c ]] || exit 1
+
+# hfs-627.100.6 is paired with xnu-8796.141.3 in Apple's macos-135
+# release.json. Fetch the immutable commit, never a moving branch/tag.
+hfs_sha=31d5ec238dfab485e78a9a30b8b92d13e8914f03
+hfs_tmp=$(mktemp -d)
+trap 'rm -rf "$hfs_tmp"' EXIT
+git init -q "$hfs_tmp"
+git -C "$hfs_tmp" fetch -q --depth 1 \
+    https://github.com/apple-oss-distributions/hfs "$hfs_sha"
+git -C "$hfs_tmp" checkout -q FETCH_HEAD
+[[ "$(git -C "$hfs_tmp" rev-parse HEAD)" == "$hfs_sha" ]]
+
+python3 - "$hfs_tmp" <<'PY'
+from pathlib import Path
+import shutil
+import sys
+
+source = Path(sys.argv[1])
+target = Path('bsd/sweet_hfs')
+if target.exists():
+    raise SystemExit(f'refusing to overwrite existing HFS sources: {target}')
+# Preserve upstream copyright/license headers; no downloaded sources in git.
+for directory in ('core', 'hfs_encodings'):
+    shutil.copytree(source / directory, target / directory)
+
+# SWEET has no AppleKeyStore (content protection is not built, see
+# sweet_hfs_compat.h); its header is only needed for the key-wrapping API.
+path = target / 'core' / 'hfs_iokit.h'
+text = path.read_text()
+include = '#include <AppleKeyStore/AppleKeyStoreFSServices.h>\n'
+first = 'int hfs_unwrap_key('
+end = '__END_DECLS'
+if text.count(include) != 1 or text.count(first) != 1 or text.count(end) != 1:
+    raise SystemExit(f'HFS source changed: {path}')
+text = text.replace(include, '#if CONFIG_PROTECT\n' + include + '#endif\n')
+i, j = text.index(first), text.index(end)
+text = text[:i] + '#if CONFIG_PROTECT\n' + text[i:j].rstrip('\n') + '\n#endif\n\n' + text[j:]
+path.write_text(text)
+PY
+
+# Kernel builds use -nostdinc; HFS's kext-config.h needs the SDK's target macros.
+hfs_sdk=$(xcrun --sdk macosx --show-sdk-path)
+cp "$hfs_sdk/usr/include/TargetConditionals.h" bsd/sweet_hfs/
+echo "Staged hfs-627.100.6 ($hfs_sha) for SWEET"
