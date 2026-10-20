@@ -185,10 +185,16 @@ def install_board_header():
     report.append("WROTE    pexpert/pexpert/arm64/HONGKONG.h")
 
     # machine config list + flags
-    sub("makedefs/MakeInc.def",
-        "SUPPORTED_ARM64_MACHINE_CONFIGS = ",
-        "SUPPORTED_ARM64_MACHINE_CONFIGS = ", "makedefs present")
     s = read("makedefs/MakeInc.def")
+    if s is not None:
+        m = re.search(r"^SUPPORTED_ARM64_MACHINE_CONFIGS\s*=.*$", s, re.M)
+        if m and "HONGKONG" not in m.group(0):
+            line = m.group(0).rstrip()
+            write("makedefs/MakeInc.def",
+                  s.replace(m.group(0), line + " HONGKONG", 1))
+            report.append("PATCHED  makedefs/MakeInc.def (supported configs)")
+        else:
+            report.append("SKIP     makedefs/MakeInc.def (supported configs)")
     if s is not None and "MACHINE_FLAGS_ARM64_HONGKONG" not in s:
         m = re.search(r"^MACHINE_FLAGS_ARM64_SWEET\b.*$", s, re.M)
         if m:
