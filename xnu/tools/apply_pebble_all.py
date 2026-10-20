@@ -526,6 +526,22 @@ def main():
         write("osfmk/arm/arm_init.c", src)
         report.append("PATCHED  osfmk/arm/arm_init.c (crash dump)")
 
+    # 23. skip EL1 system-register writes that Gunyah is likely to trap
+    #     (FP/SIMD enable and debug control).
+    src = read("osfmk/arm64/start.s")
+    if src is not None and "PEBBLE: skip CPACR" not in src:
+        src = src.replace("\tmov\t\tx0, #(CPACR_FPEN_ENABLE)\n",
+                          "#if !defined(PEBBLE)  /* PEBBLE: skip CPACR */\n"
+                          "\tmov\t\tx0, #(CPACR_FPEN_ENABLE)\n", 1)
+        src = src.replace("\tmsr\t\tCPACR_EL1, x0\n",
+                          "\tmsr\t\tCPACR_EL1, x0\n#endif\n", 1)
+        src = src.replace("\tmrs\t\tx12, MDSCR_EL1\n",
+                          "#if !defined(PEBBLE)\n\tmrs\t\tx12, MDSCR_EL1\n", 1)
+        src = src.replace("\tmsr\t\tMDSCR_EL1, x12\n",
+                          "\tmsr\t\tMDSCR_EL1, x12\n#endif\n", 1)
+        write("osfmk/arm64/start.s", src)
+        report.append("PATCHED  osfmk/arm64/start.s (skip CPACR and MDSCR)")
+
     print("\n".join(report))
     bad = [r for r in report if r.startswith(("NOANCHOR", "MISSING"))]
     print("\n%d edits, %d problems" % (len(report), len(bad)))
