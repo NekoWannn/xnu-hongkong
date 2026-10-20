@@ -18,10 +18,11 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BUNDLE = os.path.join(HERE, "sweet_patches.bundle")
-TMP_DIR = "sweet_patches.tmp"
+TMP_DIR = tempfile.mkdtemp(prefix="sweetpatches-")
 
 report = []
 
@@ -84,6 +85,14 @@ def install_sweet_patches():
             if failed <= 6:
                 report.append("PATCHFAIL %s" % name)
     report.append("APPLIED  %d sweet patches (%d failed)" % (applied, failed))
+
+    hk = sorted(f for f in os.listdir(HERE)
+                if f.startswith("hongkong") and f.endswith(".patch"))
+    for name in hk:
+        if apply_patch(os.path.join(HERE, name)):
+            report.append("APPLIED  %s" % name)
+        else:
+            report.append("PATCHFAIL %s" % name)
 
 
 def apply_patch(path):
@@ -186,64 +195,11 @@ HONGKONG_H = r'''/*
 
 
 def install_board_header():
-    write("pexpert/pexpert/arm64/HONGKONG.h", HONGKONG_H)
-    report.append("WROTE    pexpert/pexpert/arm64/HONGKONG.h")
-
-    # machine config list + flags, applied to one buffer so the two edits do
-    # not overwrite each other
-    s = read("makedefs/MakeInc.def")
-    if s is not None:
-        changed = False
-        m = re.search(r"^SUPPORTED_ARM64_MACHINE_CONFIGS\s*=.*\bSWEET\b.*$", s, re.M)
-        if m and "HONGKONG" not in m.group(0):
-            s = s.replace(m.group(0), m.group(0).rstrip() + " HONGKONG", 1)
-            changed = True
-            report.append("PATCHED  makedefs/MakeInc.def (supported configs)")
-        else:
-            report.append("SKIP     makedefs/MakeInc.def (supported configs)")
-
-        m = re.search(r"^MACHINE_FLAGS_ARM64_SWEET\b.*$", s, re.M)
-        if m and "MACHINE_FLAGS_ARM64_HONGKONG" not in s:
-            new_line = (m.group(0).rstrip() + "\n"
-                        "MACHINE_FLAGS_ARM64_HONGKONG = -DARM64_BOARD_CONFIG_HONGKONG "
-                        "-DARM64_BOARD_CONFIG_SWEET -march=armv8.2-a+crypto")
-            s = s.replace(m.group(0), new_line, 1)
-            changed = True
-            report.append("PATCHED  makedefs/MakeInc.def (hongkong flags)")
-        else:
-            report.append("SKIP     makedefs/MakeInc.def (hongkong flags)")
-
-        if changed:
-            write("makedefs/MakeInc.def", s)
-
-    # board_config.h switch
-    s = read("pexpert/pexpert/arm64/board_config.h")
-    if s is not None and "ARM64_BOARD_CONFIG_HONGKONG" not in s:
-        anchor = "#ifdef ARM64_BOARD_CONFIG_SWEET"
-        block = (
-            "#ifdef ARM64_BOARD_CONFIG_HONGKONG\n"
-            "#include <pexpert/arm64/HONGKONG.h>\n"
-            "#define MAX_L2_CLINE                   6\n"
-            "#define MAX_CPUS                       8\n"
-            "#define MAX_CPU_CLUSTERS               1\n"
-            "#define CORE_NCTRS                     8\n"
-            "#endif  /* ARM64_BOARD_CONFIG_HONGKONG */\n\n"
-        )
-        if anchor in s:
-            write("pexpert/pexpert/arm64/board_config.h", s.replace(anchor, block + anchor, 1))
-            report.append("PATCHED  board_config.h (hongkong block)")
-        else:
-            report.append("NOANCHOR board_config.h")
+    """Board files now arrive as a hongkong patch; only report if missing."""
+    if os.path.exists("pexpert/pexpert/arm64/HONGKONG.h"):
+        report.append("OK       HONGKONG.h present")
     else:
-        report.append("SKIP     board_config.h")
-
-    # header install list
-    s = read("pexpert/pexpert/arm64/Makefile")
-    if s is not None and "HONGKONG.h" not in s and "SWEET.h" in s:
-        write("pexpert/pexpert/arm64/Makefile", s.replace("SWEET.h", "SWEET.h \\\n\tHONGKONG.h", 1))
-        report.append("PATCHED  arm64/Makefile (export HONGKONG.h)")
-    else:
-        report.append("SKIP     arm64/Makefile")
+        report.append("MISSING  HONGKONG.h (no hongkong patch applied?)")
 
 
 def main():
