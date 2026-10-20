@@ -184,28 +184,32 @@ def install_board_header():
     write("pexpert/pexpert/arm64/HONGKONG.h", HONGKONG_H)
     report.append("WROTE    pexpert/pexpert/arm64/HONGKONG.h")
 
-    # machine config list + flags
+    # machine config list + flags, applied to one buffer so the two edits do
+    # not overwrite each other
     s = read("makedefs/MakeInc.def")
     if s is not None:
+        changed = False
         m = re.search(r"^SUPPORTED_ARM64_MACHINE_CONFIGS\s*=.*\bSWEET\b.*$", s, re.M)
         if m and "HONGKONG" not in m.group(0):
-            line = m.group(0).rstrip()
-            write("makedefs/MakeInc.def",
-                  s.replace(m.group(0), line + " HONGKONG", 1))
+            s = s.replace(m.group(0), m.group(0).rstrip() + " HONGKONG", 1)
+            changed = True
             report.append("PATCHED  makedefs/MakeInc.def (supported configs)")
         else:
             report.append("SKIP     makedefs/MakeInc.def (supported configs)")
-    if s is not None and "MACHINE_FLAGS_ARM64_HONGKONG" not in s:
+
         m = re.search(r"^MACHINE_FLAGS_ARM64_SWEET\b.*$", s, re.M)
-        if m:
-            line = m.group(0)
-            new = line + "\nMACHINE_FLAGS_ARM64_HONGKONG = -DARM64_BOARD_CONFIG_HONGKONG -march=armv8.2-a+crypto"
-            write("makedefs/MakeInc.def", s.replace(line, new, 1))
+        if m and "MACHINE_FLAGS_ARM64_HONGKONG" not in s:
+            new_line = (m.group(0).rstrip() + "\n"
+                        "MACHINE_FLAGS_ARM64_HONGKONG = -DARM64_BOARD_CONFIG_HONGKONG "
+                        "-march=armv8.2-a+crypto")
+            s = s.replace(m.group(0), new_line, 1)
+            changed = True
             report.append("PATCHED  makedefs/MakeInc.def (hongkong flags)")
         else:
-            report.append("NOANCHOR makedefs/MakeInc.def flags")
-    else:
-        report.append("SKIP     makedefs/MakeInc.def flags")
+            report.append("SKIP     makedefs/MakeInc.def (hongkong flags)")
+
+        if changed:
+            write("makedefs/MakeInc.def", s)
 
     # board_config.h switch
     s = read("pexpert/pexpert/arm64/board_config.h")
