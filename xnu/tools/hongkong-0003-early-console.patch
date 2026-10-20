@@ -1,8 +1,28 @@
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index 06bb568..7a28818 100644
+index 06bb568..8df7348 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
-@@ -1833,21 +1833,55 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
+@@ -1426,6 +1426,7 @@ noAuxKC:
+ #endif
+ 
+ 	arm_vm_page_granular_RWNX(segHIBDATAB, segSizeHIBDATA, ARM64_GRANULE_ALLOW_BLOCK | ARM64_GRANULE_ALLOW_HINT);
++	sweet_early_mark(16, "ptov slide 1 done");
+ 
+ 	arm_vm_page_granular_RWNX(segBOOTDATAB, segSizeBOOTDATA, 0);
+ 	arm_vm_page_granular_RNX((vm_offset_t)&intstack_low_guard, PAGE_MAX_SIZE, 0);
+@@ -1599,9 +1600,11 @@ arm_vm_physmap_init(boot_args *args)
+ 
+ 	arm_vm_page_granular_RWNX(end_kern, phystokv(args->topOfKernelData) - end_kern,
+ 	    ARM64_GRANULE_ALLOW_BLOCK | ARM64_GRANULE_ALLOW_HINT); /* Device Tree (if not locked down), RAM Disk (if present), bootArgs */
++	sweet_early_mark(17, "kdata map done");
+ 
+ 	arm_vm_physmap_slide(temp_ptov_table, (args->topOfKernelData - gPhysBase + gVirtBase),
+ 	    real_avail_end - args->topOfKernelData, AP_RWNA, ARM64_GRANULE_ALLOW_BLOCK | ARM64_GRANULE_ALLOW_HINT); // rest of physmem
++	sweet_early_mark(18, "rest of physmem mapped");
+ 
+ 	assert((temp_ptov_table[ptov_index - 1].va + temp_ptov_table[ptov_index - 1].len) <= physmap_end);
+ 
+@@ -1833,21 +1836,55 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
   */
  #define SWEET_EARLY_FB_VA (VM_MIN_KERNEL_ADDRESS + ARM_TT_L2_SIZE)
  
@@ -71,7 +91,7 @@ index 06bb568..7a28818 100644
  }
  #endif
  
-@@ -1867,11 +1901,13 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -1867,11 +1904,13 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  	/*
  	 * Get the virtual and physical kernel-managed memory base from boot_args.
  	 */
@@ -85,7 +105,7 @@ index 06bb568..7a28818 100644
  	real_phys_size = args->memSize;
  #endif
  	/*
-@@ -1991,6 +2027,7 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -1991,6 +2030,7 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  	 * Initialize l1 page table page
  	 */
  	cpu_tte = (tt_entry_t *)alloc_ptpage(TRUE);
@@ -93,7 +113,7 @@ index 06bb568..7a28818 100644
  	cpu_ttep = kvtophys((vm_offset_t)cpu_tte);
  	bzero(cpu_tte, ARM_PGBYTES);
  	avail_end = gPhysBase + mem_size;
-@@ -2177,20 +2214,34 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2177,20 +2217,34 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  	mt_early_init();
  #endif /* MONOTONIC */
  
