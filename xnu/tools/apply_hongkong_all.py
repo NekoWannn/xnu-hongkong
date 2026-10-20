@@ -187,7 +187,7 @@ def install_board_header():
     # machine config list + flags
     s = read("makedefs/MakeInc.def")
     if s is not None:
-        m = re.search(r"^SUPPORTED_ARM64_MACHINE_CONFIGS\s*=.*$", s, re.M)
+        m = re.search(r"^SUPPORTED_ARM64_MACHINE_CONFIGS\s*=.*\bSWEET\b.*$", s, re.M)
         if m and "HONGKONG" not in m.group(0):
             line = m.group(0).rstrip()
             write("makedefs/MakeInc.def",
