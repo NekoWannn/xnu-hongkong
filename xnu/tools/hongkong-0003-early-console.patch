@@ -1,16 +1,8 @@
 diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
-index 68612db..8e4a9ba 100644
+index 68612db..61dcc9e 100644
 --- a/bsd/kern/kern_exec.c
 +++ b/bsd/kern/kern_exec.c
-@@ -767,6 +767,7 @@ exec_fat_imgact(struct image_params *imgp)
- 	/* imgp->ip_vdata has PAGE_SIZE, zerofilled if the file is smaller */
- 	lret = fatfile_validate_fatarches((vm_offset_t)fat_header, PAGE_SIZE,
- 	    (off_t)imgp->ip_vattr->va_data_size);
-+	printf("SWEET: machfile loaded, committing\n");
- 	if (lret != LOAD_SUCCESS) {
- 		error = load_return_to_errno(lret);
- 		goto bad;
-@@ -1197,6 +1198,8 @@ exec_mach_imgact(struct image_params *imgp)
+@@ -1197,6 +1197,8 @@ exec_mach_imgact(struct image_params *imgp)
  		goto bad;
  	}
  
@@ -19,13 +11,14 @@ index 68612db..8e4a9ba 100644
  	if (mach_header->filetype != MH_EXECUTE) {
  		error = -1;
  		goto bad;
-@@ -1314,7 +1317,9 @@ grade:
+@@ -1314,7 +1316,10 @@ grade:
  	/*
  	 * Actually load the image file we previously decided to load.
  	 */
 +	printf("SWEET: calling load_machfile\n");
  	lret = load_machfile(imgp, mach_header, thread, &map, &load_result);
 +	printf("SWEET: load_machfile -> %d\n", lret);
++	printf("SWEET: after load_machfile\n");
  	if (lret != LOAD_SUCCESS) {
  		error = load_return_to_errno(lret);
  
