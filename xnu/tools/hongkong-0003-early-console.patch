@@ -1,3 +1,28 @@
+diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
+index 42362c5..508e1fb 100644
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -460,7 +460,9 @@ arm_init(
+ 	cpu_bootstrap();
+ 	sweet_early_mark(4, "cpu_bootstrap done");
+ 
++	sweet_early_mark(22, "before rtclock_early_init");
+ 	rtclock_early_init();
++	sweet_early_mark(23, "after rtclock_early_init");
+ 
+ 	kernel_debug_string_early("kernel_startup_bootstrap");
+ 	kernel_startup_bootstrap();
+@@ -542,8 +544,9 @@ arm_init(
+ 	kernel_startup_initialize_upto(STARTUP_SUB_KPRINTF);
+ 	kprintf("kprintf initialized\n");
+ 	sweet_early_mark(20, "kprintf startup complete");
++	sweet_early_mark(21, "after kprintf milestone");
+ 	if (serial_exists) {
+-		sweet_early_disable();
++		/* debug: early console kept enabled */
+ 	}
+ 
+ 	serialmode = 0;
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
 index 06bb568..a7acfa7 100644
 --- a/osfmk/arm64/arm_vm_init.c
