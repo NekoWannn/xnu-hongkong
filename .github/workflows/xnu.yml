@@ -1,118 +1,236 @@
-name: xnu
-
-on:
-  workflow_dispatch:
-    inputs:
-      macos_version:
-        description: macOS release whose xnu to build (13.5 = xnu-8796.141.3)
-        default: "13.5"
-      kernel_config:
-        description: RELEASE / DEVELOPMENT / DEBUG
-        default: DEVELOPMENT
-      machine_config:
-        description: xnu MACHINE_CONFIG
-        default: PEBBLE
-      keep_going:
-        description: make -k (collect all compile errors in one run)
-        default: "true"
-  push:
-    branches: [main]
-    paths:
-      - "xnu/tools/**"
-      - ".github/workflows/xnu.yml"
-
-concurrency:
-  group: xnu-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  DXB_REPO: https://github.com/blacktop/darwin-xnu-build
-  DXB_SHA: 663906528d1cd5ea8fde7de6f16de73db9511549
-  MACOS_VERSION: ${{ inputs.macos_version || '13.5' }}
-  KERNEL_CONFIG: ${{ inputs.kernel_config || 'DEVELOPMENT' }}
-  MACHINE_CONFIG: ${{ inputs.machine_config || 'PEBBLE' }}
-
-jobs:
-  build:
-    # macos-14 ships Xcode 15.x: its iig matches the xnu-8796 IORPC ABI
-    runs-on: macos-14
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Fetch build script
-        run: |
-          git init -q dxb
-          git -C dxb fetch -q --depth 1 "$DXB_REPO" "$DXB_SHA"
-          git -C dxb checkout -q FETCH_HEAD
-
-          # libfirehose_kernel is built arm64e-only; the PEBBLE kernel is arm64
-          sed -i '' 's/ARCHS="x86_64 arm64e" VALID_ARCHS="x86_64 arm64e"/ARCHS="x86_64 arm64e arm64" VALID_ARCHS="x86_64 arm64e arm64"/' dxb/build.sh
-
-          # Hook our machine-config edits in right after build.sh applies its
-          # own patch set: patches conflict with ours (they rewrite the same
-          # files), so we edit by anchor string instead of by patch context.
-          cp xnu/tools/apply_pebble_all.py dxb/
-          python3 - <<'PY'
-          p = "dxb/build.sh"
-          s = open(p).read()
-          hook = '    patches\n    python3 "$(dirname "$0")/apply_pebble_all.py" "${WORK_DIR}/xnu"\n'
-          assert "\n    patches\n" in s, "patches call not found in build.sh"
-          s = s.replace("\n    patches\n", "\n" + hook, 1)
-          open(p, "w").write(s)
-          PY
-          grep -n 'apply_pebble_all' dxb/build.sh
-
-      - name: Deps
-        run: |
-          brew install jq gum bash cmake ninja
-          printf '#!/bin/sh\nexit 0\n' | sudo tee /usr/local/bin/xcodes >/dev/null
-          sudo chmod +x /usr/local/bin/xcodes
-          sw_vers
-          XC=$(ls -d /Applications/Xcode_*.app | sort -V | head -1)
-          echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
-          sudo xcode-select -s "$XC"
-          xcodebuild -version
-
-      - name: Build
-        working-directory: dxb
-        env:
-          MAKEFLAGS: ${{ inputs.keep_going == 'false' && '' || '-k' }}
-        run: bash build.sh
-
-      - name: Diagnose build tree
-        if: always()
-        run: |
-          O=dxb/build/xnu.obj/DEVELOPMENT_ARM64_PEBBLE
-          echo "== filelists =="
-          find "$O" -name '*.filelist' -exec wc -l {} + 2>/dev/null | tail -25 || true
-          echo "== object count =="
-          find "$O" -name '*.o' 2>/dev/null | wc -l || true
-          echo "== component dirs =="
-          ls "$O" 2>/dev/null | head -20 || true
-          echo "== link.filelist samples =="
-          grep -c . "$O/link.filelist" || true
-          grep -E 'start\.o|cswitch\.o|machine_routines\.o|copyio' "$O/link.filelist" | head -8 || echo "none of start/cswitch/machine_routines"
-          echo "== osfmk.list head =="
-          head -5 "$O/osfmk/DEVELOPMENT/osfmk.filelist" || true
-          echo "== obj dir =="
-          ls "$O/osfmk/DEVELOPMENT" | head -8 || true
-          echo "== osfmk/DEVELOPMENT =="
-          ls "$O/osfmk/DEVELOPMENT" 2>/dev/null | head -10 || true
-      - name: Collect
-        if: always()
-        run: |
-          mkdir -p out
-          O=dxb/build/xnu.obj/DEVELOPMENT_ARM64_PEBBLE
-          cp -R dxb/fakeroot/System/Library/Kernels/. out/ 2>/dev/null || true
-          cp "$O"/kernel.* out/ 2>/dev/null || true
-          cp -R "$O"/kernel.*.dSYM out/ 2>/dev/null || true
-          ls -la out
-          (cd out && shasum -a 256 * > SHA256SUMS) || true
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: xnu-kernel
-          path: out/
-          if-no-files-found: warn
+name: xnu
+
+
+
+on:
+
+  workflow_dispatch:
+
+    inputs:
+
+      macos_version:
+
+        description: macOS release whose xnu to build (13.5 = xnu-8796.141.3)
+
+        default: "13.5"
+
+      kernel_config:
+
+        description: RELEASE / DEVELOPMENT / DEBUG
+
+        default: DEVELOPMENT
+
+      machine_config:
+
+        description: xnu MACHINE_CONFIG
+
+        default: HONGKONG
+
+      keep_going:
+
+        description: make -k (collect all compile errors in one run)
+
+        default: "true"
+
+  push:
+
+    branches: [main]
+
+    paths:
+
+      - "xnu/tools/**"
+
+      - ".github/workflows/xnu.yml"
+
+
+
+concurrency:
+
+  group: xnu-${{ github.ref }}
+
+  cancel-in-progress: true
+
+
+
+env:
+
+  DXB_REPO: https://github.com/blacktop/darwin-xnu-build
+
+  DXB_SHA: 663906528d1cd5ea8fde7de6f16de73db9511549
+
+  MACOS_VERSION: ${{ inputs.macos_version || '13.5' }}
+
+  KERNEL_CONFIG: ${{ inputs.kernel_config || 'DEVELOPMENT' }}
+
+  MACHINE_CONFIG: ${{ inputs.machine_config || 'HONGKONG' }}
+
+
+
+jobs:
+
+  build:
+
+    # macos-14 ships Xcode 15.x: its iig matches the xnu-8796 IORPC ABI
+
+    runs-on: macos-14
+
+    timeout-minutes: 120
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+
+
+      - name: Fetch build script
+
+        run: |
+
+          git init -q dxb
+
+          git -C dxb fetch -q --depth 1 "$DXB_REPO" "$DXB_SHA"
+
+          git -C dxb checkout -q FETCH_HEAD
+
+
+
+          # libfirehose_kernel is built arm64e-only; the HONGKONG kernel is arm64
+
+          sed -i '' 's/ARCHS="x86_64 arm64e" VALID_ARCHS="x86_64 arm64e"/ARCHS="x86_64 arm64e arm64" VALID_ARCHS="x86_64 arm64e arm64"/' dxb/build.sh
+
+
+
+          # Hook our machine-config edits in right after build.sh applies its
+
+          # own patch set: patches conflict with ours (they rewrite the same
+
+          # files), so we edit by anchor string instead of by patch context.
+
+          cp xnu/tools/apply_hongkong_all.py xnu/tools/sweet_patches.bundle dxb/
+
+          python3 - <<'PY'
+
+          p = "dxb/build.sh"
+
+          s = open(p).read()
+
+          hook = '    patches\n    python3 "$(dirname "$0")/apply_hongkong_all.py" "${WORK_DIR}/xnu"\n'
+
+          assert "\n    patches\n" in s, "patches call not found in build.sh"
+
+          s = s.replace("\n    patches\n", "\n" + hook, 1)
+
+          open(p, "w").write(s)
+
+          PY
+
+          grep -n 'apply_hongkong_all' dxb/build.sh
+
+
+
+      - name: Deps
+
+        run: |
+
+          brew install jq gum bash cmake ninja
+
+          printf '#!/bin/sh\nexit 0\n' | sudo tee /usr/local/bin/xcodes >/dev/null
+
+          sudo chmod +x /usr/local/bin/xcodes
+
+          sw_vers
+
+          XC=$(ls -d /Applications/Xcode_*.app | sort -V | head -1)
+
+          echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
+
+          sudo xcode-select -s "$XC"
+
+          xcodebuild -version
+
+
+
+      - name: Build
+
+        working-directory: dxb
+
+        env:
+
+          MAKEFLAGS: ${{ inputs.keep_going == 'false' && '' || '-k' }}
+
+        run: bash build.sh
+
+
+
+      - name: Diagnose build tree
+
+        if: always()
+
+        run: |
+
+          O=dxb/build/xnu.obj/DEVELOPMENT_ARM64_HONGKONG
+
+          echo "== filelists =="
+
+          find "$O" -name '*.filelist' -exec wc -l {} + 2>/dev/null | tail -25 || true
+
+          echo "== object count =="
+
+          find "$O" -name '*.o' 2>/dev/null | wc -l || true
+
+          echo "== component dirs =="
+
+          ls "$O" 2>/dev/null | head -20 || true
+
+          echo "== link.filelist samples =="
+
+          grep -c . "$O/link.filelist" || true
+
+          grep -E 'start\.o|cswitch\.o|machine_routines\.o|copyio' "$O/link.filelist" | head -8 || echo "none of start/cswitch/machine_routines"
+
+          echo "== osfmk.list head =="
+
+          head -5 "$O/osfmk/DEVELOPMENT/osfmk.filelist" || true
+
+          echo "== obj dir =="
+
+          ls "$O/osfmk/DEVELOPMENT" | head -8 || true
+
+          echo "== osfmk/DEVELOPMENT =="
+
+          ls "$O/osfmk/DEVELOPMENT" 2>/dev/null | head -10 || true
+
+      - name: Collect
+
+        if: always()
+
+        run: |
+
+          mkdir -p out
+
+          O=dxb/build/xnu.obj/DEVELOPMENT_ARM64_HONGKONG
+
+          cp -R dxb/fakeroot/System/Library/Kernels/. out/ 2>/dev/null || true
+
+          cp "$O"/kernel.* out/ 2>/dev/null || true
+
+          cp -R "$O"/kernel.*.dSYM out/ 2>/dev/null || true
+
+          ls -la out
+
+          (cd out && shasum -a 256 * > SHA256SUMS) || true
+
+
+
+      - uses: actions/upload-artifact@v4
+
+        if: always()
+
+        with:
+
+          name: xnu-kernel
+
+          path: out/
+
+          if-no-files-found: warn
+
