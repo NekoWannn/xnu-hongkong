@@ -516,6 +516,8 @@ PEBBLE_MIDR_BAND = '#if defined(PEBBLE)\n\t/* stage 2b: past MIDR_EL1 */\n\tMOV6
 
 PEBBLE_FB_MAP = '#if defined(PEBBLE)\n\t/* PEBBLE: map the splash framebuffer 32MB block (VA=PA) into the\n\t * existing V=P L2 table so kernel VA writes reach the panel. */\n\tMOV64\tx10, 0xf8000000\n\tMOV64\tx11, (ARM_TTE_TYPE_BLOCK | ARM_TTE_VALID | ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) | ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_WRITECOMB) | ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX)\n\torr\tx11, x11, x10\n\tand\tx12, x10, #(ARM_TT_L2_INDEX_MASK)\n\tlsr\tx12, x12, #(ARM_TT_L2_SHIFT)\n\tadd\tx13, x25, #(2 * PGBYTES)\n\tstr\tx11, [x13, x12, lsl #TTE_SHIFT]\n#endif\n'
 
+PEBBLE_JUMP = '#if defined(PEBBLE)\n\t/* PEBBLE: jump to arm_init via an explicit PA computation */\n\tadrp\tx0, EXT(arm_init)@PAGE\n\tadd\tx0, x0, EXT(arm_init)@PAGEOFF\n\tsub\tx0, x0, x22\n\tadd\tx0, x0, x23\n\tbr\tx0\n#else\n'
+
 PPL_STUBS = "\n/* ---- PEBBLE_PPL_STUBS ----------------------------------------------------\n * Apple's closed Page Protection Layer supplies these helpers and their\n * declarations.  A Gunyah guest has no PPL, and the open drop never declares\n * them, but pmap.c calls several of them unconditionally.\n */\n#ifndef PEBBLE_PPL_STUBS\n#define PEBBLE_PPL_STUBS\n\n/* The closed uat.h normally supplies pte_t. */\n#ifndef PEBBLE_PTE_T_DEFINED\n#define PEBBLE_PTE_T_DEFINED\ntypedef uint64_t pte_t;\n#endif\n\nstatic inline void *\nptep_get_iommu(pte_t pte)\n{\n\t(void)pte;\n\treturn NULL;\n}\n\nstatic inline void\npmap_ppl_lockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_unlockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_lockdown_page(vm_address_t va, int flags, bool ppl_writable)\n{\n\t(void)va;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic void pmap_phys_write_disable(vm_address_t va);\n\n#endif /* PEBBLE_PPL_STUBS */\n"
 
 
@@ -1135,6 +1137,17 @@ def main():
             report.append("PATCHED  osfmk/arm64/start.s (fb block mapped)")
         else:
             report.append("NOANCHOR fb block (count=%d)" % src.count(a))
+
+    # 27. enter arm_init by computing its PA directly
+    src = read("osfmk/arm64/start.s")
+    if src is not None and "PEBBLE: jump to arm_init" not in src:
+        a2 = "\t// Return to arm_init()\n\tret\n"
+        if a2 in src:
+            src = src.replace(a2, PEBBLE_JUMP + "\tret\n#endif\n", 1)
+            write("osfmk/arm64/start.s", src)
+            report.append("PATCHED  osfmk/arm64/start.s (explicit jump)")
+        else:
+            report.append("NOANCHOR explicit jump")
 
     print("\n".join(report))
 
