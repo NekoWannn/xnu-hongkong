@@ -106,7 +106,7 @@ jobs:
 
           # files), so we edit by anchor string instead of by patch context.
 
-          cp xnu/tools/apply_hongkong_all.py xnu/tools/sweet_patches.bundle dxb/
+          cp xnu/tools/apply_hongkong_all.py xnu/tools/sweet_patches.bundle xnu/tools/hongkong-*.patch dxb/
 
           python3 - <<'PY'
 
