@@ -71,20 +71,41 @@ def install_sweet_patches():
     if not os.path.isdir(TMP_DIR):
         os.makedirs(TMP_DIR)
     text = read(BUNDLE)
-    chunks = re.split(r"^### PATCH (.+)$", text, flags=re.M)
+    chunks = re.split(r"^### (PATCH|STAGE) (.+)$", text, flags=re.M)
+
     applied = failed = 0
-    for i in range(1, len(chunks), 2):
-        name = chunks[i].strip()
-        body = chunks[i + 1].lstrip("\n")
-        tmp = os.path.join(TMP_DIR, name)
-        write(tmp, body)
-        if apply_patch(tmp):
+    stages = []
+    for i in range(1, len(chunks), 3):
+        kind = chunks[i].strip()
+        name = chunks[i + 1].strip()
+        body = chunks[i + 2].lstrip("\n")
+        path = os.path.join(TMP_DIR, name)
+        write(path, body)
+        if kind == "STAGE":
+            stages.append((name, path))
+            continue
+        if apply_patch(path):
             applied += 1
         else:
             failed += 1
             if failed <= 6:
                 report.append("PATCHFAIL %s" % name)
     report.append("APPLIED  %d sweet patches (%d failed)" % (applied, failed))
+
+    # The stage scripts fetch/stage external sources (BearSSL, libpthread, HFS).
+    # They are written for the SWEET config and guard on MACHINE_CONFIG, so run
+    # them with that value and let them place the trees the patches refer to.
+    env = dict(os.environ)
+    env["MACHINE_CONFIG"] = "SWEET"
+    for name, path in stages:
+        os.chmod(path, 0o755)
+        try:
+            r = subprocess.call(["bash", path], env=env)
+        except OSError as e:
+            report.append("STAGEFAIL %s (%s)" % (name, e))
+            continue
+        report.append(("STAGED   %s" if r == 0 else "STAGEFAIL %s (rc=%d)")
+                      % ((name,) if r == 0 else (name, r)))
 
     hk = sorted(f for f in os.listdir(HERE)
                 if f.startswith("hongkong") and f.endswith(".patch"))
