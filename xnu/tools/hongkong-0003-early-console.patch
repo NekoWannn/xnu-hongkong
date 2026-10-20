@@ -1,3 +1,16 @@
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+index 68612db..fc04525 100644
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -6763,6 +6763,8 @@ load_init_program_at_path(proc_t p, user_addr_t scratch_addr, const char* path)
+ 	assert(scratch_addr);
+ 	assert(path);
+ 
++	printf("SWEET: init exec enter %s\n", path);
++
+ 	/*
+ 	 * Copy out program name.
+ 	 */
 diff --git a/iokit/Kernel/arm/SweetCPU.cpp b/iokit/Kernel/arm/SweetCPU.cpp
 index 2545cf9..820de8a 100644
 --- a/iokit/Kernel/arm/SweetCPU.cpp
