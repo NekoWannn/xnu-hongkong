@@ -518,7 +518,7 @@ PEBBLE_FB_MAP = '#if defined(PEBBLE)\n\t/* PEBBLE: map the splash framebuffer 32
 
 PEBBLE_JUMP = '#if defined(PEBBLE)\n\t/* PEBBLE: jump straight to PA(arm_init) computed offline */\n\tMOV64\tx0, 0xa9a3f5c0\n\tbr\tx0\n#else\n'
 
-PEBBLE_MARK_C = '/* pebble: numbered progress marks, direct framebuffer writes (no ml_io_map) */\nstatic void\npebble_step(int n)\n{\n\tvolatile unsigned int *fb = (volatile unsigned int *)0xf8c60000UL;\n\tunsigned int y, x;\n\tunsigned int row = 200 + (unsigned int)n * 60;\n\n\tfor (y = row; y < row + 40; y++) {\n\t\tfor (x = 0; x < 200; x++) {\n\t\t\tfb[(y * (4480 / 4)) + x] = 0xff0000ffu;\n\t\t}\n\t}\n}\n'
+PEBBLE_MARK_C = '/* PEBBLE hook: signature word + 16 nops.  The local patcher fills the nop\n * slots with a framebuffer store so probes need no rebuild. */\n#define PEBBLE_HOOK() __asm__ volatile(".word 0x50424831\\n\\t.rept 16\\n\\tnop\\n\\t.endr\\n")\n\nstatic void\npebble_step(int n)\n{\n\tvolatile unsigned int *fb = (volatile unsigned int *)0xf8c60000UL;\n\tunsigned int y, x;\n\tunsigned int row = 200 + (unsigned int)n * 60;\n\n\tfor (y = row; y < row + 40; y++) {\n\t\tfor (x = 0; x < 200; x++) {\n\t\t\tfb[(y * (4480 / 4)) + x] = 0xff0000ffu;\n\t\t}\n\t}\n}\n'
 
 PPL_STUBS = "\n/* ---- PEBBLE_PPL_STUBS ----------------------------------------------------\n * Apple's closed Page Protection Layer supplies these helpers and their\n * declarations.  A Gunyah guest has no PPL, and the open drop never declares\n * them, but pmap.c calls several of them unconditionally.\n */\n#ifndef PEBBLE_PPL_STUBS\n#define PEBBLE_PPL_STUBS\n\n/* The closed uat.h normally supplies pte_t. */\n#ifndef PEBBLE_PTE_T_DEFINED\n#define PEBBLE_PTE_T_DEFINED\ntypedef uint64_t pte_t;\n#endif\n\nstatic inline void *\nptep_get_iommu(pte_t pte)\n{\n\t(void)pte;\n\treturn NULL;\n}\n\nstatic inline void\npmap_ppl_lockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_unlockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_lockdown_page(vm_address_t va, int flags, bool ppl_writable)\n{\n\t(void)va;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic void pmap_phys_write_disable(vm_address_t va);\n\n#endif /* PEBBLE_PPL_STUBS */\n"
 
@@ -1158,13 +1158,13 @@ def main():
         if k in src:
             src = src.replace(k, PEBBLE_MARK_C + k, 1)
             stages = [
-                ("\tarm_setup_pre_sign();", "\tpebble_step(1);\n\tarm_setup_pre_sign();"),
-                ("\tPE_init_platform(FALSE, args);", "\tPE_init_platform(FALSE, args);\n\tpebble_step(2);"),
-                ("\tml_parse_cpu_topology();", "\tml_parse_cpu_topology();\n\tpebble_step(3);"),
-                ("\tcpu_bootstrap();", "\tcpu_bootstrap();\n\tpebble_step(4);"),
-                ("\tkernel_startup_bootstrap();", "\tkernel_startup_bootstrap();\n\tpebble_step(5);"),
-                ("\tcpu_init();", "\tcpu_init();\n\tpebble_step(6);"),
-                ("\tarm_vm_init(xmaxmem, args);", "\tpebble_step(7);\n\tarm_vm_init(xmaxmem, args);"),
+                ("\tarm_setup_pre_sign();", "\tPEBBLE_HOOK();\n\tpebble_step(1);\n\tarm_setup_pre_sign();"),
+                ("\tPE_init_platform(FALSE, args);", "\tPE_init_platform(FALSE, args);\n\tPEBBLE_HOOK();\n\tpebble_step(2);"),
+                ("\tml_parse_cpu_topology();", "\tml_parse_cpu_topology();\n\tPEBBLE_HOOK();\n\tpebble_step(3);"),
+                ("\tcpu_bootstrap();", "\tcpu_bootstrap();\n\tPEBBLE_HOOK();\n\tpebble_step(4);"),
+                ("\tkernel_startup_bootstrap();", "\tkernel_startup_bootstrap();\n\tPEBBLE_HOOK();\n\tpebble_step(5);"),
+                ("\tcpu_init();", "\tcpu_init();\n\tPEBBLE_HOOK();\n\tpebble_step(6);"),
+                ("\tarm_vm_init(xmaxmem, args);", "\tPEBBLE_HOOK();\n\tpebble_step(7);\n\tarm_vm_init(xmaxmem, args);"),
             ]
             hits = 0
             for old, new in stages:
