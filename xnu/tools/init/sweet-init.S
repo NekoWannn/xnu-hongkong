@@ -35,8 +35,11 @@ _start:
 	mov	x2, #0
 	mov	x16, #SYS_open
 	svc	#0x80
-	b.cs	hang			/* no console: nothing to report to */
-	mov	x19, x0
+	b.cc	1f
+	mov	x19, #1			/* hongkong: no console, use fd 1 */
+	b	2f
+1:	mov	x19, x0
+2:
 
 	adr	x1, hello
 	adr	x2, hello_tail
