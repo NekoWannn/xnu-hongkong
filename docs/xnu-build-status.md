@@ -276,3 +276,75 @@ Two candidate causes, both about the last step:
 
 Print `boot_args.virtBase/physBase` and the computed target from inside
 start.s to the panel before the jump, so the last step stops being a guess.
+## Booting XNU through the ios-sweet shim (works up to the jump)
+
+We now boot our kernel with `dipa-studio/ios-sweet`'s shim instead of our own
+loader, which removed a whole class of problems.
+
+### Getting their shim to run on this device
+
+Their shim builds with `-Wl,-N` (OMAGIC) and links at 0; the image is loaded
+wherever ABL puts it, so every data reference must be PC-relative.  Two things
+had to be fixed:
+
+1. **`.data` initialisers must actually be in the file.**  Our packer used to
+   prepend a 64-byte arm64 Image header even though their `start.S` already
+   contains one.  The double header shifted the image by 64 bytes, so globals
+   initialised in `.data` (their `con_fb` pointer) read from the wrong place and
+   the console wrote to a garbage address (blue panic screen or hang).  Fixed by
+   packing with `--nohdr`.
+2. **Console geometry.**  Their `put_char` used the single `MARGIN` constant for
+   both axes (`x0 = MARGIN + col*CH_W`), which pushed all text to x=420 and let
+   long lines run off the panel.  Split into `MARGIN_X 40` / `MARGIN_Y 420` and
+   added proper wrapping at `COLS`.
+
+With those two fixes their shim runs completely on `pebble`: red console, text
+output, UFS probe (`ver=00000500 cap=D5C7071F ...`) and a clean return.
+
+### Payload delivery
+
+`fastboot boot` with a v4 boot image is accepted, but the ABL on this device
+does not hand our generic ramdisk to the kernel (`/chosen` initrd pointed at a
+77 MB region that was not our data).  A v2 image is rejected outright with
+`Failed to load/authenticate boot image: Invalid Parameter`.
+
+Working delivery: **append the SWEETXNU payload directly after the shim image**
+(payload offset 0x2f000) and have `loader_boot()` prefer it over the FDT initrd.
+The whole blob is handed to ABL as the "kernel".
+
+### What the screen shows now
+
+```
+EMBED   lo=C782F000 hi=C8740580
+PHYS    base=A8000000 size=10000000
+VIRT    FFFFFE0006000000
+ENTRY   FFFFFE000746A488        <- __start
+SEGS    n=0000000A end=A9FF8000
+BOOTARG pa=A9FFC000 top=AA000000
+JUMP    00000000A946A488        <- PA of __start
+XNU     jumping (fbcon clears screen)
+```
+
+then the five bootstrap markers (white/red/green/yellow/cyan) appear and the
+machine hangs.  The cyan marker sits immediately before the return into
+`arm_init()`, so the KVA/PA arithmetic is right up to that point:
+
+```
+PA = arm_init_VA + physBase - virtBase          (BA_VIRT_BASE/BA_PHYS_BASE are
+                                                 read swapped relative to their names)
+0xfffffe000746a488 + 0xa8000000 - 0xfffffe0006000000 = 0xA946A488  (matches JUMP)
+```
+
+A blue bar written by the very first statement of `arm_init()` (direct
+framebuffer store, no `ml_io_map`) does **not** appear, and there is no EL1
+register dump either, so the fault - if any - is either a first-instruction
+fault before any push, or it is taken at EL2 by Gunyah.
+
+### Next steps
+
+- print the computed `lr` from start.s to the panel right before the `ret`, so
+  we can see whether the target equals `PA(arm_init)`.
+- if the target is right, the fault is the first stack store: verify
+  `excepstack_top`/`intstack_top` arithmetic with the same method.
+- consider dropping `--stall` style debugging in favour of their working
+  console by moving the markers into C.
