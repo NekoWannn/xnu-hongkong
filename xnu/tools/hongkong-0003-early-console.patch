@@ -1,5 +1,5 @@
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index 06bb568..c5a010f 100644
+index 06bb568..681c223 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
 @@ -1426,6 +1426,7 @@ noAuxKC:
@@ -22,7 +22,7 @@ index 06bb568..c5a010f 100644
  
  	assert((temp_ptov_table[ptov_index - 1].va + temp_ptov_table[ptov_index - 1].len) <= physmap_end);
  
-@@ -1833,21 +1836,69 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
+@@ -1833,21 +1836,75 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
   */
  #define SWEET_EARLY_FB_VA (VM_MIN_KERNEL_ADDRESS + ARM_TT_L2_SIZE)
  
@@ -52,8 +52,14 @@ index 06bb568..c5a010f 100644
 +	 * three consecutive 2 MB slots (6 MB, the whole panel) and degrade to two
 +	 * or one if the physmap already occupies them.
 +	 */
-+	tt_entry_t *root = sweet_early_root_tte;
++	/* TTBR1 is loaded from cpu_ttep, which may differ from the pointer we
++	 * cached earlier; resolve it with the same linear kernel offset. */
++	tt_entry_t *root = (tt_entry_t *)(cpu_ttep + (gVirtBase - gPhysBase));
 +	sweet_early_mark(31, "scan entered");
++	sweet_early_hex64(cpu_ttep);
++	sweet_early_putc(' ');
++	sweet_early_hex64((uint64_t)(uintptr_t)root);
++	sweet_early_putc((char)10);
 +	if (root == NULL) {
 +		return 0;
 +	}
@@ -105,7 +111,7 @@ index 06bb568..c5a010f 100644
  }
  #endif
  
-@@ -1867,11 +1918,13 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -1867,11 +1924,13 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  	/*
  	 * Get the virtual and physical kernel-managed memory base from boot_args.
  	 */
@@ -119,7 +125,7 @@ index 06bb568..c5a010f 100644
  	real_phys_size = args->memSize;
  #endif
  	/*
-@@ -1991,6 +2044,8 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -1991,6 +2050,8 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  	 * Initialize l1 page table page
  	 */
  	cpu_tte = (tt_entry_t *)alloc_ptpage(TRUE);
@@ -128,7 +134,7 @@ index 06bb568..c5a010f 100644
  	cpu_ttep = kvtophys((vm_offset_t)cpu_tte);
  	bzero(cpu_tte, ARM_PGBYTES);
  	avail_end = gPhysBase + mem_size;
-@@ -2177,20 +2232,34 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2177,20 +2238,34 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  	mt_early_init();
  #endif /* MONOTONIC */
  
