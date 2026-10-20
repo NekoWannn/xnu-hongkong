@@ -1,5 +1,5 @@
 diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
-index 68612db..b39cf9e 100644
+index 68612db..5a41944 100644
 --- a/bsd/kern/kern_exec.c
 +++ b/bsd/kern/kern_exec.c
 @@ -1197,6 +1197,8 @@ exec_mach_imgact(struct image_params *imgp)
@@ -11,18 +11,20 @@ index 68612db..b39cf9e 100644
  	if (mach_header->filetype != MH_EXECUTE) {
  		error = -1;
  		goto bad;
-@@ -1314,7 +1316,10 @@ grade:
+@@ -1314,7 +1316,12 @@ grade:
  	/*
  	 * Actually load the image file we previously decided to load.
  	 */
 +	extern void sweet_early_mark(unsigned int, const char *);
 +	printf("SWEET: calling load_machfile\n");
  	lret = load_machfile(imgp, mach_header, thread, &map, &load_result);
-+	panic("SWEET: reached after load_machfile, lret=%d", lret);
++	sweet_early_mark(5, "first mark after load_machfile");
++	sweet_early_mark(40, "second mark after load_machfile");
++	sweet_early_mark(41, "third mark after load_machfile");
  	if (lret != LOAD_SUCCESS) {
  		error = load_return_to_errno(lret);
  
-@@ -1367,6 +1372,7 @@ grade:
+@@ -1367,6 +1374,7 @@ grade:
  	p->p_cpusubtype = imgp->ip_origcpusubtype;
  	proc_setplatformdata(p, load_result.ip_platform, load_result.lr_min_sdk, load_result.lr_sdk);
  	exec_setup_tpro(imgp, &load_result);
@@ -30,7 +32,7 @@ index 68612db..b39cf9e 100644
  
  	vm_map_set_size_limit(map, proc_limitgetcur(p, RLIMIT_AS));
  	vm_map_set_data_limit(map, proc_limitgetcur(p, RLIMIT_DATA));
-@@ -2176,6 +2182,7 @@ again:
+@@ -2176,6 +2184,7 @@ again:
  	}
  	imgp->ip_ndp = ndp;     /* successful namei(); call nameidone() later */
  	imgp->ip_vp = ndp->ni_vp;       /* if set, need to vnode_put() at some point */
@@ -38,7 +40,7 @@ index 68612db..b39cf9e 100644
  
  	/*
  	 * Before we start the transition from binary A to binary B, make
-@@ -2197,6 +2204,7 @@ again:
+@@ -2197,6 +2206,7 @@ again:
  	}
  
  	error = exec_check_permissions(imgp);
@@ -46,7 +48,7 @@ index 68612db..b39cf9e 100644
  	if (error) {
  		goto bad;
  	}
-@@ -6763,6 +6771,8 @@ load_init_program_at_path(proc_t p, user_addr_t scratch_addr, const char* path)
+@@ -6763,6 +6773,8 @@ load_init_program_at_path(proc_t p, user_addr_t scratch_addr, const char* path)
  	assert(scratch_addr);
  	assert(path);
  
@@ -55,7 +57,7 @@ index 68612db..b39cf9e 100644
  	/*
  	 * Copy out program name.
  	 */
-@@ -6828,7 +6838,10 @@ load_init_program_at_path(proc_t p, user_addr_t scratch_addr, const char* path)
+@@ -6828,7 +6840,10 @@ load_init_program_at_path(proc_t p, user_addr_t scratch_addr, const char* path)
  	 */
  	set_security_token(p);
  
@@ -369,7 +371,7 @@ index 023086f..85a2517 100644
  	orr		x11, x11, x10
  	and		x12, x10, #(ARM_TT_L2_INDEX_MASK)
 diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
-index 6928957..4f4e3c0 100644
+index 6928957..b7a087a 100644
 --- a/osfmk/arm64/sweet_early.c
 +++ b/osfmk/arm64/sweet_early.c
 @@ -11,16 +11,18 @@
@@ -477,18 +479,43 @@ index 6928957..4f4e3c0 100644
  	__asm__ volatile("dsb sy" ::: "memory");
  }
  
+@@ -134,6 +168,21 @@ sweet_early_relocate(uint64_t base)
+ 	sweet_early_mark(9, "kernel framebuffer VA live");
+ }
+ 
++/*
++ * hongkong: adopt the kernel-VA mapping fbcon already created (ml_io_map).
++ * The physical alias above only exists in TTBR0, which exec replaces when it
++ * switches to the new address space - that is why every mark after
++ * load_machfile() disappeared.
++ */
++void
++sweet_early_set_fb(void *base)
++{
++	if (base != NULL) {
++		early_fb = (volatile uint32_t *)base;
++		__asm__ volatile("dsb sy" ::: "memory");
++	}
++}
++
+ void
+ sweet_early_disable(void)
+ {
 diff --git a/osfmk/arm64/sweet_early.h b/osfmk/arm64/sweet_early.h
-index d7a25f2..5eb1cd9 100644
+index d7a25f2..13e9f75 100644
 --- a/osfmk/arm64/sweet_early.h
 +++ b/osfmk/arm64/sweet_early.h
-@@ -9,6 +9,7 @@
+@@ -9,8 +9,10 @@
  #if defined(SWEET)
  void sweet_early_mark(unsigned int stage, const char *label);
  void sweet_early_putc(char c);
 +void sweet_early_hex64(uint64_t v);
  void sweet_early_panic(const char *fmt, va_list *args);
  void sweet_early_relocate(uint64_t base);
++void sweet_early_set_fb(void *base);
  void sweet_early_disable(void);
+ #else
+ static inline void sweet_early_mark(unsigned int stage, const char *label)
 diff --git a/osfmk/console/serial_console.c b/osfmk/console/serial_console.c
 index c86b9e7..9f2fa3f 100644
 --- a/osfmk/console/serial_console.c
@@ -513,7 +540,7 @@ index c86b9e7..9f2fa3f 100644
  	sweet_log_append(c, size);
  	if (sweet_console_muted && !panic_active()) {
 diff --git a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
-index 19f27cd..bc76000 100644
+index 19f27cd..4067b4a 100644
 --- a/pexpert/arm/pe_serial.c
 +++ b/pexpert/arm/pe_serial.c
 @@ -746,7 +746,10 @@ fbcon_init(void)
@@ -527,4 +554,14 @@ index 19f27cd..bc76000 100644
 +	fbcon_row = 28;
  	for (uint32_t r = 0; r < fbcon_rows; r++) {
  		fbcon_clear_row(r);
+ 	}
+@@ -837,6 +840,9 @@ fbcon_probe(void)
+ 	sweet_early_mark(17, "fbcon config read; mapping");
+ 	fbcon_base = (volatile uint32_t *)ml_io_map_wcomb(reg[0], reg[1]);
+ 	sweet_early_mark(18, "fbcon mapping returned");
++	/* hongkong: hand the kernel-VA mapping to the early console so it keeps
++	 * working after exec replaces TTBR0 (the physical alias dies there). */
++	sweet_early_set_fb(fbcon_base);
+ 	if (fbcon_base != NULL) {
+ 		register_serial_functions(&sweet_fbcon_serial_functions);
  	}
