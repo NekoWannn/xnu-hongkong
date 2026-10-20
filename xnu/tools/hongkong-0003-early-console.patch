@@ -1,88 +1,63 @@
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index 06bb568..7e6d48b 100644
+index 06bb568..0ba4b0a 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
-@@ -1833,21 +1833,39 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
-  */
- #define SWEET_EARLY_FB_VA (VM_MIN_KERNEL_ADDRESS + ARM_TT_L2_SIZE)
- 
--static void
-+vm_offset_t sweet_early_fb_va;        /* chosen alias, for sweet_early_relocate() */
-+
-+static vm_offset_t
+@@ -1837,17 +1837,23 @@ static void
  sweet_early_map_final(void)
  {
--	const vm_map_address_t va = SWEET_EARLY_FB_VA;
--	assert(va + ARM_TT_L2_SIZE <= gVirtBase);
--	tt_entry_t l1 = cpu_tte[(va & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT];
--	assert((l1 & (ARM_TTE_VALID | ARM_TTE_TYPE_MASK)) == (ARM_TTE_VALID | ARM_TTE_TYPE_TABLE));
--	tt_entry_t *l2 = (tt_entry_t *)phystokv(l1 & ARM_TTE_TABLE_MASK);
--	tt_entry_t *slot = &l2[(va & ARM_TT_L2_INDEX_MASK) >> ARM_TT_L2_SHIFT];
+ 	const vm_map_address_t va = SWEET_EARLY_FB_VA;
++	sweet_early_mark(11, "map_final entered");
+ 	assert(va + ARM_TT_L2_SIZE <= gVirtBase);
+ 	tt_entry_t l1 = cpu_tte[(va & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT];
++	sweet_early_mark(12, "L1 entry read");
+ 	assert((l1 & (ARM_TTE_VALID | ARM_TTE_TYPE_MASK)) == (ARM_TTE_VALID | ARM_TTE_TYPE_TABLE));
+ 	tt_entry_t *l2 = (tt_entry_t *)phystokv(l1 & ARM_TTE_TABLE_MASK);
++	sweet_early_mark(13, "L2 table resolved");
+ 	tt_entry_t *slot = &l2[(va & ARM_TT_L2_INDEX_MASK) >> ARM_TT_L2_SHIFT];
 -	assert(*slot == ARM_TTE_EMPTY);
 -	*slot = 0x9c000000ULL | ARM_TTE_VALID | ARM_TTE_TYPE_BLOCK |
--	    ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) |
++	sweet_early_mark(14, "slot computed");
++	/* the pre-switch call may have installed this already */
++	sweet_early_mark(15, "slot empty");
++	*slot = 0xf8c00000ULL | ARM_TTE_VALID | ARM_TTE_TYPE_BLOCK |
+ 	    ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) |
 -	    ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_WRITECOMB) |
--	    ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX;
--	__asm__ volatile("dsb ishst" ::: "memory");
-+	/*
-+	 * PEBBLE: the framebuffer must be reachable after TTBR0 is dropped.  Walk
-+	 * the kernel L1 for a 2 MB L2 slot that is still empty *after* the physmap
-+	 * has been built, so the alias neither collides with nor overwrites it.
-+	 */
-+	for (unsigned int i = 1; i < 256; i++) {
-+		vm_map_address_t va = VM_MIN_KERNEL_ADDRESS + (vm_map_address_t)i * ARM_TT_L2_SIZE;
-+		if (va + ARM_TT_L2_SIZE > gVirtBase) {
-+			break;
-+		}
-+		tt_entry_t l1 = cpu_tte[(va & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT];
-+		if ((l1 & (ARM_TTE_VALID | ARM_TTE_TYPE_MASK)) !=
-+		    (ARM_TTE_VALID | ARM_TTE_TYPE_TABLE)) {
-+			continue;
-+		}
-+		tt_entry_t *l2 = (tt_entry_t *)phystokv(l1 & ARM_TTE_TABLE_MASK);
-+		tt_entry_t *slot = &l2[(va & ARM_TT_L2_INDEX_MASK) >> ARM_TT_L2_SHIFT];
-+		if (*slot != ARM_TTE_EMPTY) {
-+			continue;
-+		}
-+		*slot = 0xf8c00000ULL | ARM_TTE_VALID | ARM_TTE_TYPE_BLOCK |
-+		    ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) |
-+		    ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_DISABLE) |
-+		    ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX;
-+		__asm__ volatile("dsb ishst" ::: "memory");
-+		return va;
-+	}
-+	return 0;
++	    ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_DISABLE) |
+ 	    ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX;
+ 	__asm__ volatile("dsb ishst" ::: "memory");
++	sweet_early_mark(16, "block entry stored");
  }
  #endif
  
-@@ -2179,18 +2197,26 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2179,18 +2185,27 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  
  	arm_set_user_tbi();
  
 +	arm_vm_physmap_init(args);
++	set_mmu_ttb_alternate(cpu_ttep & TTBR_BADDR_MASK);
  #if defined(SWEET)
 -	/* phystokv() must still refer to the bootstrap aperture here. */
--	sweet_early_map_final();
 +	/*
-+	 * Install the alias once the physmap is final but *before* TTBR1 is
-+	 * switched: phystokv() still resolves through the bootstrap aperture
-+	 * here, and the entry is already in the table we are about to load.
++	 * The block installed before arm_vm_physmap_init() landed in the outgoing
++	 * root; install it again in the final one and make the TLB see it before
++	 * the console touches the alias.
 +	 */
-+	sweet_early_fb_va = sweet_early_map_final();
++	cpu_tte = (tt_entry_t *)(phystokv(cpu_ttep));
+ 	sweet_early_map_final();
 +	flush_mmu_tlb();
- #endif
--	arm_vm_physmap_init(args);
- 	set_mmu_ttb_alternate(cpu_ttep & TTBR_BADDR_MASK);
++#endif
 +#if defined(SWEET)
 +	sweet_early_mark(18, "final TTBR1 live");
-+#endif
+ #endif
+-	arm_vm_physmap_init(args);
+-	set_mmu_ttb_alternate(cpu_ttep & TTBR_BADDR_MASK);
  
  	ml_enable_monitor();
  
  #if defined(SWEET)
  	/* The final TTBR1 is live; leave the outgoing VA=PA framebuffer alias. */
 -	sweet_early_relocate(SWEET_EARLY_FB_VA);
-+	sweet_early_relocate(sweet_early_fb_va + 0x60000);
++	sweet_early_relocate(SWEET_EARLY_FB_VA + 0x60000);
  #endif
  	set_mmu_ttb(invalid_ttep & TTBR_BADDR_MASK);
  
