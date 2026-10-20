@@ -1151,16 +1151,30 @@ def main():
         else:
             report.append("NOANCHOR explicit jump")
 
-    # 28. blue bar as the first statement of arm_init
+    # 28. numbered progress marks through arm_init
     src = read("osfmk/arm/arm_init.c")
-    if src is not None and "pebble_mark(void)" not in src:
+    if src is not None and "pebble_step(int" not in src:
         k = "void arm_init(boot_args * args);"
         if k in src:
             src = src.replace(k, PEBBLE_MARK_C + k, 1)
-            src = src.replace("\tarm_setup_pre_sign();",
-                              "\tpebble_mark();\n\tarm_setup_pre_sign();", 1)
+            stages = [
+                ("\tarm_setup_pre_sign();", "\tpebble_step(1);\n\tarm_setup_pre_sign();"),
+                ("\tPE_init_platform(FALSE, args);", "\tPE_init_platform(FALSE, args);\n\tpebble_step(2);"),
+                ("\tml_parse_cpu_topology();", "\tml_parse_cpu_topology();\n\tpebble_step(3);"),
+                ("\tcpu_bootstrap();", "\tcpu_bootstrap();\n\tpebble_step(4);"),
+                ("\tkernel_startup_bootstrap();", "\tkernel_startup_bootstrap();\n\tpebble_step(5);"),
+                ("\tcpu_init();", "\tcpu_init();\n\tpebble_step(6);"),
+                ("\tarm_vm_init(xmaxmem, args);", "\tpebble_step(7);\n\tarm_vm_init(xmaxmem, args);"),
+            ]
+            hits = 0
+            for old, new in stages:
+                if old in src:
+                    src = src.replace(old, new, 1)
+                    hits += 1
+                else:
+                    report.append("NOANCHOR stage %r" % old.strip())
             write("osfmk/arm/arm_init.c", src)
-            report.append("PATCHED  osfmk/arm/arm_init.c (blue bar)")
+            report.append("PATCHED  osfmk/arm/arm_init.c (%d progress marks)" % hits)
         else:
             report.append("NOANCHOR blue bar")
 
