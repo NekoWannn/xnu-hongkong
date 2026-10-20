@@ -518,6 +518,8 @@ PEBBLE_FB_MAP = '#if defined(PEBBLE)\n\t/* PEBBLE: map the splash framebuffer 32
 
 PEBBLE_JUMP = '#if defined(PEBBLE)\n\t/* PEBBLE: jump to arm_init via an explicit PA computation */\n\tadrp\tx0, EXT(arm_init)@PAGE\n\tadd\tx0, x0, EXT(arm_init)@PAGEOFF\n\tsub\tx0, x0, x22\n\tadd\tx0, x0, x23\n\tbr\tx0\n#else\n'
 
+PEBBLE_MARK_C = '/* pebble: direct framebuffer write, no ml_io_map, works from the first\n * C statement because start.s maps VA=PA 0xf8000000. */\nstatic void\npebble_mark(void)\n{\n\tvolatile unsigned int *fb = (volatile unsigned int *)0xf8c60000UL;\n\tunsigned int y, x;\n\n\tfor (y = 300; y < 340; y++) {\n\t\tfor (x = 0; x < 600; x++) {\n\t\t\tfb[(y * (4480 / 4)) + x] = 0xff0000ffu;\n\t\t}\n\t}\n}\n\n'
+
 PPL_STUBS = "\n/* ---- PEBBLE_PPL_STUBS ----------------------------------------------------\n * Apple's closed Page Protection Layer supplies these helpers and their\n * declarations.  A Gunyah guest has no PPL, and the open drop never declares\n * them, but pmap.c calls several of them unconditionally.\n */\n#ifndef PEBBLE_PPL_STUBS\n#define PEBBLE_PPL_STUBS\n\n/* The closed uat.h normally supplies pte_t. */\n#ifndef PEBBLE_PTE_T_DEFINED\n#define PEBBLE_PTE_T_DEFINED\ntypedef uint64_t pte_t;\n#endif\n\nstatic inline void *\nptep_get_iommu(pte_t pte)\n{\n\t(void)pte;\n\treturn NULL;\n}\n\nstatic inline void\npmap_ppl_lockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_unlockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_lockdown_page(vm_address_t va, int flags, bool ppl_writable)\n{\n\t(void)va;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic void pmap_phys_write_disable(vm_address_t va);\n\n#endif /* PEBBLE_PPL_STUBS */\n"
 
 
@@ -1148,6 +1150,19 @@ def main():
             report.append("PATCHED  osfmk/arm64/start.s (explicit jump)")
         else:
             report.append("NOANCHOR explicit jump")
+
+    # 28. blue bar as the first statement of arm_init
+    src = read("osfmk/arm/arm_init.c")
+    if src is not None and "pebble_mark(void)" not in src:
+        k = "void arm_init(boot_args * args);"
+        if k in src:
+            src = src.replace(k, PEBBLE_MARK_C + k, 1)
+            src = src.replace("\tarm_setup_pre_sign();",
+                              "\tpebble_mark();\n\tarm_setup_pre_sign();", 1)
+            write("osfmk/arm/arm_init.c", src)
+            report.append("PATCHED  osfmk/arm/arm_init.c (blue bar)")
+        else:
+            report.append("NOANCHOR blue bar")
 
     print("\n".join(report))
 
