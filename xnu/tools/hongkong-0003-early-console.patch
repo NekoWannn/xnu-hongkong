@@ -1,8 +1,8 @@
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index 06bb568..b9a8709 100644
+index 06bb568..8aa0b26 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
-@@ -1833,21 +1833,53 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
+@@ -1833,21 +1833,55 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
   */
  #define SWEET_EARLY_FB_VA (VM_MIN_KERNEL_ADDRESS + ARM_TT_L2_SIZE)
  
@@ -31,13 +31,15 @@ index 06bb568..b9a8709 100644
 +	 * three consecutive 2 MB slots (6 MB, the whole panel) and degrade to two
 +	 * or one if the physmap already occupies them.
 +	 */
++	tt_entry_t *root = (tt_entry_t *)phystokv(cpu_ttep);
++
 +	for (unsigned int need = SWEET_FB_BLOCKS; need >= 1; need--) {
 +		for (unsigned int i = 1; i + need < 256; i++) {
 +			vm_map_address_t va = VM_MIN_KERNEL_ADDRESS + (vm_map_address_t)i * ARM_TT_L2_SIZE;
 +			if (va + need * ARM_TT_L2_SIZE > gVirtBase) {
 +				break;
 +			}
-+			tt_entry_t l1 = cpu_tte[(va & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT];
++			tt_entry_t l1 = root[(va & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT];
 +			if ((l1 & (ARM_TTE_VALID | ARM_TTE_TYPE_MASK)) !=
 +			    (ARM_TTE_VALID | ARM_TTE_TYPE_TABLE)) {
 +				continue;
@@ -69,7 +71,7 @@ index 06bb568..b9a8709 100644
  }
  #endif
  
-@@ -2179,18 +2211,31 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2179,18 +2213,31 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  
  	arm_set_user_tbi();
  
