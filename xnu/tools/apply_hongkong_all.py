@@ -16,11 +16,12 @@ override the hardware constants that differ.
 import io
 import os
 import re
+import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BUNDLE = os.path.join(HERE, "sweet_patches.bundle")
-PATCH_DIR = "patches" if os.path.isdir("patches") else "dxb/patches"
+TMP_DIR = "sweet_patches.tmp"
 
 report = []
 
@@ -58,21 +59,43 @@ def sub(path, old, new, label):
 
 # ---------------------------------------------------------------- 1. patches
 def install_sweet_patches():
+    """Split the bundle and apply every patch ourselves.
+
+    The workflow hook runs after dxb/build.sh has already walked its own
+    patches directory, so we cannot rely on that loop to pick these up.
+    """
     if not os.path.exists(BUNDLE):
         report.append("MISSING  sweet_patches.bundle")
         return
-    if not os.path.isdir(PATCH_DIR):
-        os.makedirs(PATCH_DIR)
+    if not os.path.isdir(TMP_DIR):
+        os.makedirs(TMP_DIR)
     text = read(BUNDLE)
     chunks = re.split(r"^### PATCH (.+)$", text, flags=re.M)
-    # chunks[0] is the preamble, then (name, body) pairs
-    n = 0
+    applied = failed = 0
     for i in range(1, len(chunks), 2):
         name = chunks[i].strip()
         body = chunks[i + 1].lstrip("\n")
-        write(os.path.join(PATCH_DIR, name), body)
-        n += 1
-    report.append("WROTE    %d sweet patches into %s" % (n, PATCH_DIR))
+        tmp = os.path.join(TMP_DIR, name)
+        write(tmp, body)
+        if apply_patch(tmp):
+            applied += 1
+        else:
+            failed += 1
+            if failed <= 6:
+                report.append("PATCHFAIL %s" % name)
+    report.append("APPLIED  %d sweet patches (%d failed)" % (applied, failed))
+
+
+def apply_patch(path):
+    for cmd in (["git", "apply", "--whitespace=nowarn", path],
+                ["patch", "-p1", "--forward", "--no-backup-if-mismatch", "-s", "-i", path]):
+        try:
+            r = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            continue
+        if r == 0:
+            return True
+    return False
 
 
 # ------------------------------------------------------- 2. board config file
