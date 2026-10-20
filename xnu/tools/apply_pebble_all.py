@@ -516,7 +516,7 @@ PEBBLE_MIDR_BAND = '#if defined(PEBBLE)\n\t/* stage 2b: past MIDR_EL1 */\n\tMOV6
 
 PEBBLE_FB_MAP = '#if defined(PEBBLE)\n\t/* PEBBLE: map the splash framebuffer 32MB block (VA=PA) into the\n\t * existing V=P L2 table so kernel VA writes reach the panel. */\n\tMOV64\tx10, 0xf8000000\n\tMOV64\tx11, (ARM_TTE_TYPE_BLOCK | ARM_TTE_VALID | ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) | ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_WRITECOMB) | ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX)\n\torr\tx11, x11, x10\n\tand\tx12, x10, #(ARM_TT_L2_INDEX_MASK)\n\tlsr\tx12, x12, #(ARM_TT_L2_SHIFT)\n\tadd\tx13, x25, #(2 * PGBYTES)\n\tstr\tx11, [x13, x12, lsl #TTE_SHIFT]\n#endif\n'
 
-PEBBLE_JUMP = '#if defined(PEBBLE)\n\t/* PEBBLE: jump to arm_init via an explicit PA computation */\n\tadrp\tx0, EXT(arm_init)@PAGE\n\tadd\tx0, x0, EXT(arm_init)@PAGEOFF\n\tsub\tx0, x0, x22\n\tadd\tx0, x0, x23\n\tbr\tx0\n#else\n'
+PEBBLE_JUMP = '#if defined(PEBBLE)\n\t/* PEBBLE: jump straight to PA(arm_init) computed offline */\n\tMOV64\tx0, 0xa9a3f5c0\n\tbr\tx0\n#else\n'
 
 PEBBLE_MARK_C = '/* pebble: direct framebuffer write, no ml_io_map, works from the first\n * C statement because start.s maps VA=PA 0xf8000000. */\nstatic void\npebble_mark(void)\n{\n\tvolatile unsigned int *fb = (volatile unsigned int *)0xf8c60000UL;\n\tunsigned int y, x;\n\n\tfor (y = 300; y < 340; y++) {\n\t\tfor (x = 0; x < 600; x++) {\n\t\t\tfb[(y * (4480 / 4)) + x] = 0xff0000ffu;\n\t\t}\n\t}\n}\n\n'
 
