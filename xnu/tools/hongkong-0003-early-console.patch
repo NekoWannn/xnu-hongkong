@@ -223,6 +223,24 @@ index 06bb568..a7acfa7 100644
  
  	flush_mmu_tlb();
  	sweet_early_mark(10, "TTBR0 off; TLB flushed");
+diff --git a/osfmk/arm64/machine_routines.c b/osfmk/arm64/machine_routines.c
+index a1f2a91..c128550 100644
+--- a/osfmk/arm64/machine_routines.c
++++ b/osfmk/arm64/machine_routines.c
+@@ -1241,7 +1241,12 @@ ml_get_cpu_number_local(void)
+ 	MRS(mpidr_el1_value, "MPIDR_EL1");
+ 	cpu_id = ml_get_cpu_number((uint32_t)mpidr_el1_value);
+ 
+-	assert(cpu_id <= (unsigned int)ml_get_max_cpu_number());
++	if (cpu_id > (unsigned int)ml_get_max_cpu_number()) {
++		/* hongkong debug: the boot core's MPIDR may be absent from a
++		 * single-CPU topology; treat it as the boot CPU. */
++		sweet_early_mark(24, "boot MPIDR not in topology; using cpu0");
++		cpu_id = 0;
++	}
+ 
+ 	return cpu_id;
+ }
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 index 023086f..85a2517 100644
 --- a/osfmk/arm64/start.s
