@@ -96,7 +96,7 @@ jobs:
 
           # libfirehose_kernel is built arm64e-only; the HONGKONG kernel is arm64
 
-          sed -i '' 's/ARCHS="x86_64 arm64e" VALID_ARCHS="x86_64 arm64e"/ARCHS="x86_64 arm64e arm64" VALID_ARCHS="x86_64 arm64e arm64"/' dxb/build.sh
+          sed -i '' 's/ARCHS="x86_64 arm64e" VALID_ARCHS="x86_64 arm64e"/ARCHS="arm64" VALID_ARCHS="arm64 arm64e"/' dxb/build.sh
 
 
 
