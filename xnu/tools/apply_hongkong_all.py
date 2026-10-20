@@ -100,22 +100,18 @@ def apply_patch(path):
 
 # ------------------------------------------------------- 2. board config file
 HONGKONG_H = r'''/*
- * Board configuration for the Xiaomi 18 Pro ("hongkong", Qualcomm SM8950,
- * Snapdragon 8 Elite Gen 5 class SoC).  Derived from ios-sweet's SWEET.h for
- * the Redmi Note 10 Pro: same generic-ARM + GICv3 shape, no Apple
- * implementation-defined system registers (APPLE_ARM64_ARCH_FAMILY is
- * deliberately not defined).
+ * Board configuration for the Xiaomi 18 Pro ("hongkong", Qualcomm SM8950).
  *
- * Differences from sweet:
- *   - the architected timer uses the standard PPI numbering (the live FDT
- *     reports PPI 13/14/11/12), so the virtual timer is INTID 16 + 11 = 27
+ * This deliberately reuses ios-sweet's SWEET board layer: HONGKONG.h pulls in
+ * SWEET.h so every define their patch series added (SWEET_SMP_MAX_CPUS, the
+ * GICv3 register map, the early console hooks, ...) is inherited, and then
+ * overrides only the constants that differ on this SoC:
+ *
+ *   - the architected timer uses the standard PPI numbering here (the live
+ *     FDT reports PPI 13/14/11/12), so the virtual timer is 16 + 11 = 27
  *     instead of sweet's 16 + 3 = 19;
- *   - GICD lives at 0x17000000 and GICR at 0x17080000 (2 MB, 8 PEs).  Both
- *     are also carried in the ADT, which is where the code reads them.
- *
- * SWEET is defined as well so the whole `#if defined(SWEET)` layer from
- * ios-sweet (early framebuffer console, GIC Group 1 dispatch, DT platform
- * expert, boot CPU driver) applies unchanged.
+ *   - GICD is at 0x17000000 and GICR at 0x17080000 (both also carried in the
+ *     ADT, which is where the code actually reads them).
  */
 
 #ifndef _PEXPERT_ARM64_HONGKONG_H
@@ -124,57 +120,10 @@ HONGKONG_H = r'''/*
 #define HONGKONG                  1
 #define SWEET                     1
 
-#define NO_MONITOR                1
-#define NO_ECORE                  1
+#include <pexpert/arm64/SWEET.h>
 
-#define ARM_ARCH_TIMER
-#define __ARM_ARCH__              8
-#define __ARM_VMSA__              8
-#define __ARM_VFP__               4
-#define __ARM_COHERENT_CACHE__    1
-#define __ARM_DEBUG__             7
-#define __ARM_ENABLE_SWAP__       1
-#define __ARM_V8_CRYPTO_EXTENSIONS__ 1
-#define __ARM_PAN_AVAILABLE__     1
-#define __ARM_16K_PG__            1
-
-#define HAS_GIC_V3                1
-
-#ifndef ASSEMBLER
-#define PLATFORM_PANIC_LOG_DISABLED
-#endif /* ! ASSEMBLER */
-
-/* standard ARM PPI numbering on this SoC: virtual timer is PPI 11 */
+#undef  SWEET_VTIMER_INTID
 #define SWEET_VTIMER_INTID        27
-#define SWEET_IPI_SGI             1
-
-#define GIC_SPURIOUS_IRQ          1023
-
-#define GICR_PE_SIZE              0x20000
-
-/* GICv3 register definitions; see GICv3 spec (Arm IHI 0069G) */
-#define GICD_CTLR                 0x0
-
-#define GICD_CTLR_ENABLEGRP1      0x1
-#define GICD_CTLR_ENABLEGRP1A     0x2
-#define GICD_CTLR_ARE_NS          0x10
-#define GICD_CTLR_RWP             0x80000000
-
-#define GICR_TYPER                              0x08
-#define GICR_WAKER                              0x14
-#define GICR_IGROUPR0                           0x10080
-#define GICR_ISENABLER0                         0x10100
-#define GICR_IPRIORITYR0                        0x10400
-
-#define GICR_TYPER_AFFINITY_VALUE_SHIFT         32
-#define GICR_TYPER_LAST                         0x10
-
-#define GICR_WAKER_PROCESSORSLEEP               0x2
-#define GICR_WAKER_CHILDRENASLEEP               0x4
-
-#define ICC_CTLR_EOIMODE                        0x2
-
-#define ICC_SRE_SRE                             0x1
 
 #endif /* ! _PEXPERT_ARM64_HONGKONG_H */
 '''
@@ -201,7 +150,7 @@ def install_board_header():
         if m and "MACHINE_FLAGS_ARM64_HONGKONG" not in s:
             new_line = (m.group(0).rstrip() + "\n"
                         "MACHINE_FLAGS_ARM64_HONGKONG = -DARM64_BOARD_CONFIG_HONGKONG "
-                        "-march=armv8.2-a+crypto")
+                        "-DARM64_BOARD_CONFIG_SWEET -march=armv8.2-a+crypto")
             s = s.replace(m.group(0), new_line, 1)
             changed = True
             report.append("PATCHED  makedefs/MakeInc.def (hongkong flags)")
