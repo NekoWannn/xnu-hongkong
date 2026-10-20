@@ -1,77 +1,86 @@
-# PEBBLE — SM8950 (Xiaomi 18 Pro) XNU port, step 1
+# XNU on the Xiaomi 18 Pro (`hongkong`, Qualcomm SM8950)
 
-This is the build-enablement step: teach xnu-8796 about a new arm64 machine
-config called `PEBBLE`, modelled on the `SWEET` config from
-[dipa-studio/ios-sweet](https://github.com/dipa-studio/ios-sweet).
+Bringing Apple's XNU kernel up on a Snapdragon 8-class phone, built on top of
+[dipa-studio/ios-sweet](https://github.com/dipa-studio/ios-sweet) — the project
+that already runs XNU on the Redmi Note 10 Pro (`sweet`, SM7150).
 
-Nothing here runs on the phone yet. The goal of this step is to get a
-`kernel.<config>.pebble` out of CI, then bring it up with a boot shim.
+**Status:** XNU builds in CI, is loaded by the ios-sweet boot shim, and reaches
+`arm_init()` on real hardware. It hangs inside early kernel bootstrap; the
+current work is bisecting that point.
 
-## Files
+## How it works
+
+```
+fastboot boot  boot.img  (Android boot image, header v4)
+        |
+        +-- shim            ios-sweet's shim, retargeted at this panel:
+        |                   UFS probe, MMU/identity map, console, payload loader
+        |
+        +-- SWEETXNU payload  our kernel in ios-sweet's payload format,
+                              appended at offset 0x2f000 of the shim image
+                              (this device's ABL takes the generic ramdisk
+                               from init_boot, so the boot ramdisk is unused)
+```
+
+The shim relocates the kernel to the physical base from the ADT, fills
+`boot_args`, maps the framebuffer, and jumps to `__start` at EL1 (Gunyah owns
+EL2 on this SoC).
+
+## Building
+
+`.github/workflows/xnu.yml` builds with
+[blacktop/darwin-xnu-build](https://github.com/blacktop/darwin-xnu-build)
+pinned to xnu-8796.141.3, then runs `xnu/tools/apply_hongkong_all.py`, which:
+
+1. extracts `xnu/tools/sweet_patches.bundle` (ios-sweet's 81-patch series) and
+   applies it to the tree;
+2. adds the `HONGKONG` machine config: `pexpert/pexpert/arm64/HONGKONG.h`,
+   an entry in `board_config.h`, and `MACHINE_FLAGS_ARM64_HONGKONG` in
+   `makedefs/MakeInc.def`.
+
+`HONGKONG.h` deliberately also defines `SWEET`, so every `#if defined(SWEET)`
+path from ios-sweet (early framebuffer console, GIC Group 1 dispatch, device
+tree platform expert, boot CPU driver) stays active. Only the hardware
+constants differ:
+
+| | sweet (SM7150) | hongkong (SM8950) |
+| --- | --- | --- |
+| GICD | `0x17a00000` | `0x17000000` |
+| GICR | `0x17a60000` | `0x17080000` |
+| virtual timer INTID | 19 (Qualcomm PPI 3) | 27 (standard PPI 11) |
+| framebuffer | `0x9c000000`, 1080x2400 | `0xf8c60000`, 1120x2436 |
+
+The GIC bases and timer interrupt also come from the ADT
+(`tools/mkadt_hongkong.py`), which is where the kernel actually reads them.
+
+## Host-side tools
 
 | File | Purpose |
 | --- | --- |
-| `0001-pebble-machine-config.patch` | Adds `PEBBLE` to `makedefs/MakeInc.def`, hooks `PEBBLE.h` into `board_config.h`, adds the header itself |
-| `0002-pebble-gic-timer.patch` | GICv3 Group-1 dispatch in `osfmk/arm64/sleh.c` (timer PPI 27 / IPIs) and the `start.s` SCTLR readback fix for Gunyah |
-| `0003-pebble-gic-init.patch` | `pe_init_fiq()` for PEBBLE in `pexpert/arm/pe_fiq.c`: Group-1 redistributor wake-up, IGROUPR0/ISENABLER0, ICC_SRE/PMR/BPR1, IGRPEN1 |
-| `xnu.yml` | GitHub Actions workflow (macos-14 + pinned darwin-xnu-build) |
-| `PEBBLE.h` | Board config header (also embedded in the patch) |
-| `apply_pebble.py` | Alternative to the patch: applies the same edits by anchor string |
-| `gen_patches.py` | Regenerates the patch from a source tree |
+| `port/mkadt_hongkong.py` | Builds the minimal Apple Device Tree this SoC needs |
+| `port/shim2/` | ios-sweet's shim, patched for this panel and payload layout |
+| `port/shim2/mkpayload.py` | Packs a kernel Mach-O + ADT into a SWEETXNU payload |
+| `probe/pack_v4.js` | Wraps shim + payload into a v4 boot image |
+| `port/cycle.ps1` | Fetch artifact, build payload, pack, `fastboot boot` |
+| `port/docs/xnu-build-status.md` | Findings log: what was measured and why |
 
-## Why the patch looks like this
+## Findings worth keeping
 
-- **`PEBBLE` in `SUPPORTED_ARM64_MACHINE_CONFIGS`** plus
-  `MACHINE_FLAGS_ARM64_PEBBLE = -DARM64_BOARD_CONFIG_PEBBLE -march=armv8.2-a`.
-- **plain arm64, not arm64e**: the Oryon cores implement PAC, but XNU's arm64e
-  ABI assumes Apple's PAC keys and ABI details. `NO_MONITOR` / `NO_ECORE` come
-  from the same reasoning as `SWEET`.
-- The header records what we measured from the live device tree:
-  GICv3 at `0x17000000`, timer frames at `0x17810000`, 8 CPUs, 64-byte cache
-  lines, standard arch-timer PPIs 27/26.
-
-## How to run it
-
-1. Create a GitHub repo (public gets free macOS runner minutes).
-2. Put `xnu.yml` at `.github/workflows/xnu.yml`.
-3. Put the patch at `xnu/patches/0001-pebble-machine-config.patch`.
-4. Actions → *xnu* → Run workflow (machine_config = `PEBBLE`,
-   kernel_config = `DEVELOPMENT`, keep_going = true).
-5. Download the `xnu-kernel` artifact: `kernel.development.pebble`.
-
-Keep `keep_going=true` for the first runs: a single run then reports *every*
-compile error instead of stopping at the first one.
-
-## What will break first (expected)
-
-- `arm64e` assumptions elsewhere: some files key off `__arm64e__`; a plain
-  arm64 build may need a few more `#if defined(PEBBLE)` guards.
-- `pexpert/arm64/pe_fiq.c` has no PEBBLE branch yet — the next patch adds the
-  GICv3 Group 1 setup (`ICC_SRE_EL1`, `GICR_WAKER`, group/priority registers).
-- `osfmk/arm64/sleh.c` needs the Group 1 IRQ dispatch (timer PPI 27, IPIs < 16).
-- `pexpert/arm64/start.s` has an Apple-only SCTLR round-trip check to skip.
-
-Those are the patch-0002/0003 items; they are behaviour, not build enablement,
-so they come after the first successful link.
-
-## Status of the on-device work
-
-| Item | State |
-| --- | --- |
-| Boot path (`fastboot boot` of a custom v4 image) | **works, verified on the phone** |
-| v4 boot image layout (`header_size=1584`, arm64 `Image` header, `b +64`) | **solved** |
-| Framebuffer geometry (`0xf8c60000`, pitch 4480, 32bpp, 1120x2436) | **calibrated on hardware** |
-| Platform facts (GICv3, UFS 4.0, Gunyah, 22 RAM fragments) | **harvested from the live DT** |
-| GIC addresses (`GICD 0x17000000/64K`, `GICR 0x17080000/2M`) | **confirmed via `/proc/iomem`** |
-| Register-level probe output (EL / PSCI / MMFR0) | **blocked**: the panel stopped scanning out our writes after the first few boots |
-| XNU build | this step |
-
-## Next, in order
-
-1. Get a kernel binary out of CI (this step).
-2. Write the boot shim: load the kernel + generated Apple device tree + boot
-   args, then hand off — the same shape as `xnu-loader`, but as an Android boot
-   image so `fastboot boot` can load it.
-3. Bring the panel back for diagnostics (DSI + backlight re-init inside the
-   shim), or move diagnostics to a channel that does not need the screen.
-4. Storage: UFS 4.0 host driver (largest unknown; needs vendor kernel source).
+- **Gunyah owns EL2**, so XNU runs at EL1 and cannot use the monitor interface.
+- **The boot ramdisk is not ours**: with boot header v4 the generic ramdisk
+  lives in `init_boot`, and ABL assembles the initrd from `init_boot` +
+  `vendor_boot`. `fastboot boot` only replaces `boot.img`, so the payload is
+  appended to the shim instead. A header v2 image is rejected outright by this
+  ABL (`Failed to load/authenticate boot image: Invalid Parameter`).
+- **`start.s` converts to KVA, not PA**: `BA_VIRT_BASE` / `BA_PHYS_BASE` are
+  read swapped relative to their names, so the effective arithmetic is
+  `PA = VA + physBase - virtBase`.
+- **The framebuffer must be mapped in the kernel's own page tables** before the
+  MMU is enabled from `start.s`, otherwise every post-MMU write faults and the
+  machine resets before any output appears.
+- **ios-sweet's shim needs `--nohdr` packing**: its `start.S` already carries an
+  arm64 Image header, and a second one shifts the image by 64 bytes, which
+  breaks every `.data` initialiser (their `con_fb` ended up pointing at garbage).
+- `configure_timer_apple_regs()`, `wfe_timeout_*()` and
+  `configure_misc_apple_regs()` are called unconditionally by xnu-8796's
+  `arm_init()` and are harmless on Qualcomm — ios-sweet does not patch them out.
