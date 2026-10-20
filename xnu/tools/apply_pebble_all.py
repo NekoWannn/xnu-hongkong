@@ -255,6 +255,10 @@ PEBBLE_VEC_SETUP = '#if defined(PEBBLE)\n\t/* PEBBLE: own vectors so an early ex
 
 PEBBLE_STAGE3 = '#if defined(PEBBLE)\n\t/* Stage 3: about to return into arm_init() */\n\tMOV64\tx0, 0xf8e42600\n\tMOV64\tx4, 4480\n\tmov\tx2, #8\nLpebble_ret_row:\n\tmov\tx3, #120\n\tmov\tx5, x0\n\tmov\tw1, #0x0000ffff\nLpebble_ret_px:\n\tstr\tw1, [x5], #4\n\tsubs\tx3, x3, #1\n\tb.ne\tLpebble_ret_px\n\tadd\tx0, x0, x4\n\tsubs\tx2, x2, #1\n\tb.ne\tLpebble_ret_row\n\tdsb\tsy\n#endif\n'
 
+PEBBLE_TPIDR = '#if defined(PEBBLE)\n\tMOV64\tx0, 0xf8e8e600\n\tMOV64\tx4, 4480\n\tmov\tx2, #8\nLpebble_tpidr_row:\n\tmov\tx3, #120\n\tmov\tx5, x0\n\tmov\tw1, 0x00ff00ff\nLpebble_tpidr_px:\n\tstr\tw1, [x5], #4\n\tsubs\tx3, x3, #1\n\tb.ne\tLpebble_tpidr_px\n\tadd\tx0, x0, x4\n\tsubs\tx2, x2, #1\n\tb.ne\tLpebble_tpidr_row\n\tdsb\tsy\n#endif\n'
+
+PEBBLE_MIDR = '#if defined(PEBBLE)\n\tMOV64\tx0, 0xf8eda600\n\tMOV64\tx4, 4480\n\tmov\tx2, #8\nLpebble_midr_row:\n\tmov\tx3, #120\n\tmov\tx5, x0\n\tmov\tw1, 0x00ffff00\nLpebble_midr_px:\n\tstr\tw1, [x5], #4\n\tsubs\tx3, x3, #1\n\tb.ne\tLpebble_midr_px\n\tadd\tx0, x0, x4\n\tsubs\tx2, x2, #1\n\tb.ne\tLpebble_midr_row\n\tdsb\tsy\n#endif\n'
+
 PPL_STUBS = "\n/* ---- PEBBLE_PPL_STUBS ----------------------------------------------------\n * Apple's closed Page Protection Layer supplies these helpers and their\n * declarations.  A Gunyah guest has no PPL, and the open drop never declares\n * them, but pmap.c calls several of them unconditionally.\n */\n#ifndef PEBBLE_PPL_STUBS\n#define PEBBLE_PPL_STUBS\n\n/* The closed uat.h normally supplies pte_t. */\n#ifndef PEBBLE_PTE_T_DEFINED\n#define PEBBLE_PTE_T_DEFINED\ntypedef uint64_t pte_t;\n#endif\n\nstatic inline void *\nptep_get_iommu(pte_t pte)\n{\n\t(void)pte;\n\treturn NULL;\n}\n\nstatic inline void\npmap_ppl_lockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_unlockdown_pages(vm_address_t kva, vm_size_t size, int flags,\n    bool ppl_writable)\n{\n\t(void)kva;\n\t(void)size;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic inline void\npmap_ppl_lockdown_page(vm_address_t va, int flags, bool ppl_writable)\n{\n\t(void)va;\n\t(void)flags;\n\t(void)ppl_writable;\n}\n\nstatic void pmap_phys_write_disable(vm_address_t va);\n\n#endif /* PEBBLE_PPL_STUBS */\n"
 
 
@@ -550,6 +554,15 @@ def main():
                           PEBBLE_STAGE3 + "\t// Return to arm_init()\n\tret\n", 1)
         write("osfmk/arm64/start.s", src)
         report.append("PATCHED  osfmk/arm64/start.s (pre-ret marker)")
+
+    src = read("osfmk/arm64/start.s")
+    if src is not None and "Lpebble_tpidr_row" not in src:
+        src = src.replace("\tmsr\t\tTPIDR_EL1, xzr",
+                          "\tmsr\t\tTPIDR_EL1, xzr\n" + PEBBLE_TPIDR, 1)
+        src = src.replace("\tmrs x12, MIDR_EL1\n",
+                          "\tmrs x12, MIDR_EL1\n" + PEBBLE_MIDR, 1)
+        write("osfmk/arm64/start.s", src)
+        report.append("PATCHED  osfmk/arm64/start.s (tpidr/midr markers)")
 
     print("\n".join(report))
     bad = [r for r in report if r.startswith(("NOANCHOR", "MISSING"))]
