@@ -495,8 +495,8 @@ def main():
 
     src = read("osfmk/arm/arm_init.c")
     if src is not None and "pebble_marker();" not in src:
-        src = src.replace("\tpebble_early_puts(\"PEBBLE platform ok\\n\");",
-                          "\tpebble_marker();\n\tpebble_early_puts(\"PEBBLE platform ok\\n\");", 1)
+        src = src.replace("\tarm_setup_pre_sign();",
+                          "\tpebble_marker();\n\tarm_setup_pre_sign();", 1)
         write("osfmk/arm/arm_init.c", src)
         report.append("PATCHED  osfmk/arm/arm_init.c (blue marker)")
 
