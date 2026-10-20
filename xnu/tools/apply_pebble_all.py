@@ -1164,7 +1164,7 @@ def main():
                 ("\twfe_timeout_configure();", "\twfe_timeout_configure();\n\tpebble_step(21);"),
                 ("\twfe_timeout_init();", "\twfe_timeout_init();\n\tpebble_step(22);"),
                 ("\tconfigure_misc_apple_boot_args();", "\tconfigure_misc_apple_boot_args();\n\tpebble_step(23);"),
-                ("\tconfigure_misc_apple_regs(true);", "\tconfigure_misc_apple_regs(true);\n\tpebble_step(24);"),
+                ("\tconfigure_misc_apple_regs();", "\tconfigure_misc_apple_regs();\n\tpebble_step(24);"),
                 ("\tml_parse_cpu_topology();", "\tml_parse_cpu_topology();\n\tPEBBLE_HOOK();\n\tpebble_step(3);"),
                 ("\tcpu_bootstrap();", "\tcpu_bootstrap();\n\tPEBBLE_HOOK();\n\tpebble_step(4);"),
                 ("\tkernel_startup_bootstrap();", "\tkernel_startup_bootstrap();\n\tPEBBLE_HOOK();\n\tpebble_step(5);"),
