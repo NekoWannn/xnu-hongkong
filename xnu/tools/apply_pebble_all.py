@@ -557,8 +557,8 @@ def main():
 
     src = read("osfmk/arm64/start.s")
     if src is not None and "Lpebble_tpidr_row" not in src:
-        src = src.replace("\tmsr\t\tTPIDR_EL1, xzr",
-                          "\tmsr\t\tTPIDR_EL1, xzr\n" + PEBBLE_TPIDR, 1)
+        src = src.replace("#if !defined(PEBBLE)  /* PEBBLE: skip TPIDR */\n\tmsr\t\tTPIDR_EL1, xzr\n#endif",
+                          "#if !defined(PEBBLE)  /* PEBBLE: skip TPIDR */\n\tmsr\t\tTPIDR_EL1, xzr\n#endif\n" + PEBBLE_TPIDR, 1)
         src = src.replace("\tmrs x12, MIDR_EL1\n",
                           "\tmrs x12, MIDR_EL1\n" + PEBBLE_MIDR, 1)
         write("osfmk/arm64/start.s", src)
